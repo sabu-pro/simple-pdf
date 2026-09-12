@@ -9,6 +9,7 @@ playwright-report/
 *.tsbuildinfo
 *.log
 public/pdfjs/
+public/ream-fonts/
 .local/
 __pycache__/
 *.pyc

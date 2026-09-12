@@ -224,19 +224,21 @@ test("PDF to Word downloads a DOCX and explains scans", async ({ page }) => {
   await expect(page.locator(".notice-error")).toContainText("OCR", { timeout: 90000 });
 });
 
-test("Word conversion reports the actual server capability", async ({ page, request }) => {
+test("Word to PDF runs in the browser and downloads a real PDF", async ({ page, request }) => {
   const capabilities = await (await request.get("/api/capabilities")).json();
+  expect(capabilities.wordToPdf).toBe(true);
   await page.goto("/word-to-pdf");
   await page
     .getByLabel("Choose DOCX file", { exact: true })
     .setInputFiles(path.join(fixtures, "sample.docx"));
-  if (!capabilities.wordToPdf) {
-    await expect(
-      page.getByText("Word to PDF needs LibreOffice on this server.", { exact: false }),
-    ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Convert to PDF", exact: true })).toBeDisabled();
-  } else {
-    await page.getByRole("button", { name: "Convert to PDF", exact: true }).click();
-    await expect(page.getByText("Done! Your PDF is ready.")).toBeVisible({ timeout: 90000 });
-  }
+  await expect(page.getByText("Your DOCX is converted in your browser")).toBeVisible();
+  await page.getByRole("button", { name: "Convert to PDF", exact: true }).click();
+  await expect(page.getByText("Done! Your PDF is ready.")).toBeVisible({ timeout: 90000 });
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF", exact: true }).click();
+  const download = await pending;
+  const output = path.join(fixtures, "word-converted.pdf");
+  await download.saveAs(output);
+  expect(download.suggestedFilename()).toBe("sample.pdf");
+  expect((await PDFDocument.load(await readFile(output))).getPageCount()).toBeGreaterThan(0);
 });

@@ -2,7 +2,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFile, writeFile, access } from "node:fs/promises";
 import path from "node:path";
 import { PDFDocument, degrees } from "pdf-lib";
-import { Document, Packer, Paragraph } from "docx";
+import {
+  AlignmentType,
+  Document,
+  Footer,
+  Header,
+  ImageRun,
+  Packer,
+  PageBreak,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType,
+} from "docx";
 import yauzl from "yauzl";
 import { withTempDirectory } from "@/lib/files/temp";
 import { receiveUpload } from "@/lib/files/upload";
@@ -12,6 +26,7 @@ import { runProcess } from "@/lib/conversion/process";
 import { conversionConfig } from "@/lib/conversion/config";
 import { isSameOrigin } from "@/lib/files/origin";
 import { buildTextLayerModel } from "@/lib/pdf/text-layer";
+import { convertWordToPdf } from "@/lib/conversion/browser-word-to-pdf";
 
 function docx() {
   return Packer.toBuffer(
@@ -61,7 +76,10 @@ async function zipEntryNames(buffer: Buffer) {
     });
   });
 }
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("upload origin", () => {
   it("uses the incoming Host when Next normalizes its internal URL", () => {
@@ -155,6 +173,81 @@ describe("document conversion", () => {
       await expect(validateDocx(filename)).rejects.toThrow("damaged");
     });
   });
+  it("converts a styled Word document with tables, images, headers, footers, and page breaks in JavaScript", async () => {
+    const pixel = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const source = await Packer.toBuffer(
+      new Document({
+        sections: [
+          {
+            headers: {
+              default: new Header({ children: [new Paragraph("Quarterly Timesheet")] }),
+            },
+            footers: {
+              default: new Footer({ children: [new Paragraph("Internal review copy")] }),
+            },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 240 },
+                children: [
+                  new TextRun({ text: "Alex Morgan", bold: true, size: 32, font: "Calibri" }),
+                  new TextRun({ text: " — September", italics: true, size: 24, font: "Cambria" }),
+                ],
+              }),
+              new Table({
+                width: { size: 100, type: WidthType.PERCENTAGE },
+                rows: [
+                  new TableRow({
+                    children: [
+                      new TableCell({ children: [new Paragraph("Project")] }),
+                      new TableCell({ children: [new Paragraph("Hours")] }),
+                    ],
+                  }),
+                  new TableRow({
+                    children: [
+                      new TableCell({ children: [new Paragraph("Quarterly reporting")] }),
+                      new TableCell({ children: [new Paragraph("7.5")] }),
+                    ],
+                  }),
+                ],
+              }),
+              new Paragraph({
+                children: [
+                  new ImageRun({
+                    type: "png",
+                    data: pixel,
+                    transformation: { width: 12, height: 12 },
+                  }),
+                ],
+              }),
+              new Paragraph({ children: [new PageBreak()] }),
+              new Paragraph({ children: [new TextRun({ text: "Second page", bold: true })] }),
+            ],
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (!url.startsWith("/ream-fonts/")) throw new Error(`Unexpected font URL: ${url}`);
+      const font = await readFile(path.resolve("public", url.slice(1)));
+      return new Response(font);
+    });
+    const converted = await convertWordToPdf(new Uint8Array(source));
+    const output = await PDFDocument.load(converted.bytes);
+    expect(output.getPageCount()).toBeGreaterThanOrEqual(2);
+    const text = Object.values((await buildTextLayerModel(converted.bytes)).pages)
+      .flatMap((page) => page.blocks)
+      .map((block) => block.text)
+      .join(" ");
+    expect(text).toContain("Alex Morgan");
+    expect(text).toContain("Quarterly reporting");
+    expect(text).toContain("Second page");
+    expect(converted.warnings.join(" ")).toContain("metric-compatible fonts");
+  }, 30000);
   it("reports missing LibreOffice without producing a fake PDF", async () => {
     vi.stubEnv("LIBREOFFICE_PATH", path.resolve(".local/definitely-not-installed.exe"));
     await withTempDirectory(async (directory) => {

@@ -26,10 +26,12 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
       wordToPdf: boolean;
       pdfToWord: boolean;
       maxUploadBytes: number;
+      maxPdfToWordBytes?: number;
       maxPdfPages: number;
     }>(),
     [capabilityError, setCapabilityError] = useState(false);
   const request = useRef<XMLHttpRequest | undefined>(undefined);
+  const run = useRef(0);
   const active = ["reading", "uploading", "processing"].includes(phase);
   useEffect(() => {
     const controller = new AbortController();
@@ -66,7 +68,9 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
       validateFile(
         files[0],
         word ? "docx" : "pdf",
-        capabilities?.maxUploadBytes || CLIENT_MAX_BYTES,
+        word
+          ? capabilities?.maxUploadBytes || CLIENT_MAX_BYTES
+          : capabilities?.maxPdfToWordBytes || capabilities?.maxUploadBytes || CLIENT_MAX_BYTES,
       );
       validateMagic(
         new Uint8Array(await files[0].slice(0, 16).arrayBuffer()),
@@ -80,8 +84,38 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
       setPhase("error");
     }
   }
+  async function convertWord() {
+    if (!file) return;
+    const currentRun = ++run.current;
+    setPhase("processing");
+    setError("");
+    setResult(undefined);
+    setWarnings([]);
+    try {
+      const { convertWordToPdf } = await import("@/lib/conversion/browser-word-to-pdf");
+      const converted = await convertWordToPdf(new Uint8Array(await file.arrayBuffer()));
+      if (run.current !== currentRun) return;
+      const pdfBytes = new Uint8Array(converted.bytes);
+      setResult(new Blob([pdfBytes.buffer], { type: "application/pdf" }));
+      setWarnings(converted.warnings);
+      setPhase("success");
+    } catch (error) {
+      if (run.current !== currentRun) return;
+      setError(
+        errorMessage(
+          error,
+          "This Word document could not be converted. It may be damaged or use unsupported content.",
+        ),
+      );
+      setPhase("error");
+    }
+  }
   function convert() {
     if (!file) return;
+    if (word) {
+      void convertWord();
+      return;
+    }
     setProcessingStep(0);
     setPhase("uploading");
     setProgress(0);
@@ -90,7 +124,7 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
     setWarnings([]);
     const xhr = new XMLHttpRequest();
     request.current = xhr;
-    xhr.open("POST", `/api/convert/${direction}`);
+    xhr.open("POST", "/api/pdf-to-word-worker");
     xhr.responseType = "blob";
     xhr.timeout = 250000;
     xhr.upload.onprogress = (event) => {
@@ -153,12 +187,6 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
       />
       <div className="tool-columns">
         <div>
-          {word && capabilities && !capabilities.wordToPdf && (
-            <Notice>
-              Word to PDF needs LibreOffice on this server. Install the free LibreOffice application
-              and restart SimplePDF. Setup steps are in README.md.
-            </Notice>
-          )}
           {!word && capabilities && !capabilities.pdfToWord && (
             <Notice>
               PDF to Word needs the free pdf2docx Python package on this server. Install the
@@ -167,15 +195,21 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
           )}
           {capabilityError && (
             <Notice>
-              Couldn’t check the server’s conversion tools. You can try a conversion; any missing
-              dependency will be reported.
+              Couldn’t load the conversion settings. You can still try converting your document.
             </Notice>
           )}
           {!file ? (
             <UploadZone
               kind={word ? "docx" : "pdf"}
               local={false}
-              maxBytes={capabilities?.maxUploadBytes}
+              privacyMessage={
+                word ? "Your DOCX stays in this browser while it is converted." : undefined
+              }
+              maxBytes={
+                word
+                  ? capabilities?.maxUploadBytes
+                  : capabilities?.maxPdfToWordBytes || capabilities?.maxUploadBytes
+              }
               disabled={active}
               onFiles={(files) => void choose(files)}
             />
@@ -205,7 +239,7 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
               </div>
               <p className="text-xs text-muted leading-6">
                 {word
-                  ? "Your file is uploaded temporarily for conversion and deleted when processing finishes. Review the PDF for layout changes."
+                  ? "Your DOCX is converted in your browser and is not uploaded. Review the PDF for layout changes."
                   : "Your file is uploaded temporarily for conversion and deleted when processing finishes. Layout and formatting are preserved where the PDF structure allows."}
               </p>
               <div className="action-row">
@@ -237,7 +271,14 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
                   )}
                 </Button>
                 {active && (
-                  <Button variant="ghost" onClick={() => request.current?.abort()}>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      run.current++;
+                      request.current?.abort();
+                      setPhase("idle");
+                    }}
+                  >
                     Cancel
                   </Button>
                 )}
@@ -297,8 +338,9 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
             </>
           )}
           <p className="mt-6">
-            No permanent document storage. Temporary job files are deleted when processing finishes
-            or fails.
+            {word
+              ? "Conversion runs in your browser, so the DOCX is not uploaded."
+              : "No permanent document storage. Temporary job files are deleted when processing finishes or fails."}
           </p>
         </aside>
       </div>

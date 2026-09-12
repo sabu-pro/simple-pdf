@@ -5,7 +5,10 @@ const config: NextConfig = {
   async rewrites() {
     return process.env.VERCEL
       ? []
-      : [{ source: "/api/edit-text-worker", destination: "/api/edit-text" }];
+      : [
+          { source: "/api/edit-text-worker", destination: "/api/edit-text" },
+          { source: "/api/pdf-to-word-worker", destination: "/api/convert/pdf-to-word" },
+        ];
   },
   async headers() {
     return [

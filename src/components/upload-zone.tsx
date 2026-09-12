@@ -11,6 +11,7 @@ export function UploadZone({
   disabled = false,
   compact = false,
   local = true,
+  privacyMessage,
   maxBytes = CLIENT_MAX_BYTES,
 }: {
   onFiles: (files: File[]) => void;
@@ -19,6 +20,7 @@ export function UploadZone({
   disabled?: boolean;
   compact?: boolean;
   local?: boolean;
+  privacyMessage?: string;
   maxBytes?: number;
 }) {
   const input = useRef<HTMLInputElement>(null);
@@ -81,9 +83,10 @@ export function UploadZone({
       {!compact && (
         <p className="privacy-note">
           <ShieldCheck size={16} className="shrink-0 mt-0.5" />
-          {local
-            ? "Opened in your browser. Files are uploaded only when a tool needs temporary server processing."
-            : "Files are uploaded temporarily for conversion and deleted after processing."}
+          {privacyMessage ||
+            (local
+              ? "Opened in your browser. Files are uploaded only when a tool needs temporary server processing."
+              : "Files are uploaded temporarily for conversion and deleted after processing.")}
         </p>
       )}
     </div>

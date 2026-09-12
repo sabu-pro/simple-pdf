@@ -2,11 +2,11 @@
 
 PDF editing without the headache. A local-first, free web application for **Edit PDF, Merge PDF, Word to PDF, PDF to Word, and Sign PDF**.
 
-No AI, paid processing APIs, accounts, database, cloud storage, payments, or tracking. Viewing, additions, merging, and signing run in your browser. Original-text edits and document conversion run temporarily on your own Node server.
+No AI, paid processing APIs, accounts, database, cloud storage, payments, or tracking. Viewing, additions, merging, signing, and Word-to-PDF conversion run in your browser. Original-text edits and PDF-to-Word conversion use temporary Python jobs.
 
 ## Run locally
 
-Requirements: **Node.js 22.13+** (Node 24 LTS recommended), npm, Git, and Python 3.11+ with the PDF conversion dependencies. LibreOffice is required only for Word → PDF.
+Requirements: **Node.js 22.13+** (Node 24 LTS recommended), npm, and Git. Python 3.11+ with the conversion dependencies is required for local original-text editing and PDF-to-Word conversion. Word-to-PDF does not require LibreOffice.
 
 ```powershell
 cd C:\Users\sabut\Downloads\PDFEDITINGSOFTWARE
@@ -17,7 +17,7 @@ npm run dev
 
 Open **http://127.0.0.1:3000**. Next.js updates the preview as you edit source files. If `.env.local` already exists, keep it instead of copying over it. No secrets are needed.
 
-The first installation downloads dependencies. After that, browser assets, fonts, the PDF worker, and processing engines are served locally; no external API is used. `npm ci` copies the PDF.js worker, character maps, fonts, and WASM resources into `public/pdfjs/` through the postinstall script.
+The first installation downloads dependencies. After that, browser assets, the PDF worker, and common Word-conversion fonts are served locally; no conversion API is used. `npm ci` copies PDF.js assets and the open metric-compatible Word-conversion fonts into `public/` through the postinstall script.
 
 For source-text editing and layout-aware PDF-to-Word conversion, install the free/open-source Python engine:
 
@@ -33,32 +33,13 @@ This uses PyMuPDF, pdf2docx, and python-docx. Set `PYTHON_PATH` in `.env.local` 
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | Edit PDF    | Select/replace/delete original text; add/move/resize text, drawings, highlights and signatures; undo/redo; export                           | Browser plus isolated PyMuPDF worker for source text |
 | Merge PDF   | Multiple uploads, page counts, drag or button reordering, removal, real page copying, download                                              | Browser memory                                       |
-| Word to PDF | Validated DOCX → actual PDF through headless LibreOffice                                                                                    | Node server with LibreOffice                         |
-| PDF to Word | Layout-aware editable DOCX with text styling, page dimensions, tables, images, columns, visual headers/footers, form values and page breaks | Isolated pdf2docx subprocess                         |
+| Word to PDF | DOCX → PDF with supported styles, tables, images, sections, headers/footers and page breaks through Ream                                   | Browser memory                                       |
+| PDF to Word | Layout-aware editable DOCX with text styling, page dimensions, tables, images, columns, visual headers/footers, form values and page breaks | Temporary pdf2docx Python job                        |
 | Sign PDF    | Draw, type, or upload PNG/JPG; move/resize; embed into a new PDF                                                                            | Browser memory                                       |
 
-## Installing LibreOffice
+## Word-to-PDF engine
 
-LibreOffice is free and open source. Download it from [the official LibreOffice website](https://www.libreoffice.org/download/download-libreoffice/).
-
-**Windows:** install the standard application. SimplePDF checks the usual `C:\Program Files\LibreOffice\program\soffice.com` and `soffice.exe` locations. For a custom installation, put this in `.env.local`:
-
-```dotenv
-LIBREOFFICE_PATH="C:\Program Files\LibreOffice\program\soffice.com"
-```
-
-**macOS:** install the official application; `/Applications/LibreOffice.app/Contents/MacOS/soffice` is detected.
-
-**Ubuntu/Debian:**
-
-```bash
-sudo apt-get update
-sudo apt-get install libreoffice-writer fonts-dejavu fonts-liberation
-```
-
-Restart the development server after installing or changing the path. `/api/capabilities` reports whether the binary is available without exposing its path. If it is missing, the Word tool shows a setup message and the API returns `503 LIBREOFFICE_UNAVAILABLE`. It never substitutes a fake PDF.
-
-Matching fonts improve Word conversion fidelity. Complex documents can still differ. Macro-enabled Word files, embedded programs, XML entities, and external image/template relationships are rejected. Ordinary hyperlinks are allowed.
+Word-to-PDF uses the MIT-licensed Ream OOXML/PDF engine in the browser, so it works on Vercel without LibreOffice or an uploaded document. Embedded DOCX fonts are used when available. Arimo, Tinos, Cousine, Carlito and Caladea are bundled as open metric-compatible substitutes for common fonts such as Arial, Times New Roman, Courier New, Calibri and Cambria. Complex or unsupported Word features can still differ and should be reviewed before sharing.
 
 ## Commands
 
@@ -67,7 +48,7 @@ npm run dev          # Local preview, bound to 127.0.0.1:3000
 npm run lint         # ESLint
 npm run typecheck    # TypeScript, without emitting files
 npm test            # Unit and integration tests, including real PDF/DOCX output
-npm run test:vercel-worker # Vercel Python text-edit endpoint
+npm run test:vercel-worker # Vercel Python text-edit and PDF-to-Word endpoints
 npm run test:watch   # Interactive unit test runner
 npm run test:e2e     # Chromium workflows; reuses a running local dev server
 npm run build       # Production build
@@ -103,7 +84,6 @@ Copy `.env.example` to `.env.local` for local development. Production variables 
 | `MAX_UPLOAD_MB`             | `50`           | Server per-file limit, 1–100 MB; enforced on the stream                                      |
 | `CONVERSION_TIMEOUT_MS`     | `90000`        | Worker/LibreOffice timeout, 1,000–180,000 ms                                                 |
 | `MAX_PDF_PAGES`             | `300`          | PDF-to-Word page limit, 1–1,000                                                              |
-| `LIBREOFFICE_PATH`          | auto-detect    | Trusted executable path configured by the operator                                           |
 | `TEMP_DIRECTORY`            | OS temp folder | Private temporary processing location, outside public/static paths                           |
 
 Merge is also limited to 30 documents, 2,000 pages, and a combined size of three times the browser per-file limit. Signature images are limited to 5 MB and 20 megapixels. PDF-to-Word extraction is bounded to two million text characters and a 512 MB Node heap. Two server conversions can run concurrently per process; excess requests receive HTTP 429.
@@ -142,7 +122,7 @@ Undo/redo uses immutable snapshots, capped at 50 changes. Dragging commits once 
 
 ### Conversion boundaries
 
-`DocumentConversionService` is a narrow interface independent of the UI. The local implementation runs LibreOffice for DOCX → PDF with a unique profile for each job, disabled macros, safe fixed filenames, no shell interpolation, and a timeout. PDF → Word requires the isolated open-source pdf2docx worker; it does not silently fall back to a paragraph-only converter.
+Word → PDF uses Ream in the browser with bundled open fonts. PDF → Word uses the open-source pdf2docx worker; it does not silently fall back to a paragraph-only converter.
 
 PDF → Word uses three explicit stages:
 
@@ -150,7 +130,7 @@ PDF → Word uses three explicit stages:
 2. pdf2docx reconstructs the DOCX from positioned text and styling, tables, columns, images, page dimensions, spacing, and page sections. The output ZIP and Word document structure are reopened before download.
 3. The status file identifies textless pages. Fully textless PDFs fail with `OCR_REQUIRED` and explain that OCR must be run first.
 
-The PDF parser and DOCX generator run in a separate process with a time limit. Process output is discarded, so parser warnings cannot log document contents. Errors returned to the browser are controlled messages, without local paths or stack traces.
+On a local Node server, the PDF parser and DOCX generator run in a separate process with a time limit. On Vercel, the same conversion function runs inside the isolated Python Function. Errors returned to the browser are controlled messages, without local paths or stack traces.
 
 ### File lifecycle and security
 
@@ -162,11 +142,9 @@ An abrupt operating-system termination can prevent `finally` from running. For d
 
 ## Production and deployment
 
-For the whole MVP, use a **dedicated Node server or container**. LibreOffice requires an installed executable, subprocesses, fonts, writable private temp space, and sufficient memory. PDF-to-Word also uses a subprocess.
+On Vercel, original-text editing and PDF-to-Word use file-based Python Functions. `requirements.txt` makes Vercel install PyMuPDF, pdf2docx and python-docx automatically. Jobs write only to `/tmp` and delete their temporary directory on success or failure. The 300-page limit remains enforced. Because Vercel limits function request and response bodies to 4.5 MB, hosted source-text editing and PDF-to-Word accept PDFs up to 4 MB, and PDF-to-Word reports when its generated DOCX exceeds the response limit.
 
-On Vercel, original-text editing uses the file-based Python function in `api/edit-text-worker.py`, with PyMuPDF installed from `requirements.txt`. Vercel limits function request and response bodies to 4.5 MB, so hosted source-text editing supports PDFs up to 4 MB. Merge, added text, drawings, highlights, and signatures still run in the browser. The document-conversion endpoints require the dedicated server or container described above.
-
-The UI already talks to clean same-origin APIs, so it can later be hosted separately by proxying `/api/convert/*` and `/api/capabilities` to a dedicated processing service. No database is required to do that.
+Word-to-PDF, merge, added text, drawings, highlights and signatures run in browser memory. The Word converter therefore has no Vercel binary, temporary-file or function-body dependency.
 
 A Dockerfile and Compose configuration are included:
 
@@ -189,7 +167,7 @@ Before exposing the service publicly, add a reverse proxy with TLS, body-size li
 - Merge copies pages and visible content; bookmarks, outlines, cross-document links and digital signature certificates are not guaranteed to survive.
 - Undo/redo and editable sessions live only in memory. Downloaded overlays become part of the exported PDF, and are not restored as editable objects on re-upload.
 - Very large/complex PDFs can strain browser memory even within the upload size limit. Rendering is lazy, but parsing and export still use in-memory buffers.
-- The installed LibreOffice engine is required for Word-to-PDF. If it is unavailable, the other four tools still work and Word conversion explains the dependency.
+- Word-to-PDF supports the WordprocessingML features implemented by Ream. Fonts not embedded in the DOCX use bundled open metric-compatible substitutes, and uncommon writing systems may require a font download. Fields, macros, embedded programs and unusual drawing effects may change or be omitted.
 
 ## Testing
 
@@ -210,5 +188,5 @@ Recommended next work is open-source OCR behind the existing extraction boundary
 - [pdf-lib documentation](https://pdf-lib.js.org/docs/)
 - [PyMuPDF documentation](https://pymupdf.readthedocs.io/)
 - [pdf2docx documentation](https://pdf2docx.readthedocs.io/)
-- [LibreOffice command-line parameters](https://help.libreoffice.org/latest/en-US/text/shared/guide/start_parameters.html)
+- [Ream document converter](https://github.com/alex-krassavin/reamkit)
 - [DOCX library](https://docx.js.org/)

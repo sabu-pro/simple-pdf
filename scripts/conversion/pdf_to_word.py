@@ -2,20 +2,20 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import zipfile
 from pathlib import Path
 
+DEPENDENCY_ERROR = ""
 try:
     import pymupdf as fitz
     from docx import Document
     from pdf2docx import Converter
 except ImportError as error:
-    Path(sys.argv[3]).write_text(
-        json.dumps({"ok": False, "code": "PYTHON_DEPENDENCIES", "message": str(error)}),
-        encoding="utf-8",
-    )
-    raise SystemExit(0)
+    DEPENDENCY_ERROR = str(error)
+
+logging.getLogger().setLevel(logging.WARNING)
 
 
 def analyse_pdf(input_path: str, max_pages: int):
@@ -115,25 +115,25 @@ def flatten_form_controls(input_path: str, prepared_path: str) -> int:
     return count
 
 
-def convert(input_path: str, output_path: str, status_path: str, max_pages: int):
+def convert_pdf_to_word(input_path: str, output_path: str, max_pages: int) -> dict:
+    if DEPENDENCY_ERROR:
+        return {
+            "ok": False,
+            "code": "PYTHON_DEPENDENCIES",
+            "message": DEPENDENCY_ERROR,
+        }
     page_count, empty_pages, widget_count, image_count = analyse_pdf(input_path, max_pages)
     if page_count == 0:
         raise ValueError("This PDF has no pages.")
     if len(empty_pages) == page_count:
-        Path(status_path).write_text(
-            json.dumps(
-                {
-                    "ok": False,
-                    "code": "OCR_REQUIRED",
-                    "message": (
-                        "This PDF is scanned or image-based and has no extractable text. "
-                        "Run OCR first, then convert the searchable PDF."
-                    ),
-                }
+        return {
+            "ok": False,
+            "code": "OCR_REQUIRED",
+            "message": (
+                "This PDF is scanned or image-based and has no extractable text. "
+                "Run OCR first, then convert the searchable PDF."
             ),
-            encoding="utf-8",
-        )
-        return
+        }
 
     conversion_input = input_path
     prepared_path = str(Path(output_path).with_name("prepared-input.pdf"))
@@ -161,20 +161,20 @@ def convert(input_path: str, output_path: str, status_path: str, max_pages: int)
         warnings.append(
             "Interactive PDF form controls are converted to Word layout and may need small adjustments."
         )
-    Path(status_path).write_text(
-        json.dumps(
-            {
-                "ok": True,
-                "engine": "pdf2docx",
-                "emptyPages": empty_pages,
-                "warnings": warnings,
-                "pages": page_count,
-                "widgets": widget_count,
-                "images": image_count,
-            }
-        ),
-        encoding="utf-8",
-    )
+    return {
+        "ok": True,
+        "engine": "pdf2docx",
+        "emptyPages": empty_pages,
+        "warnings": warnings,
+        "pages": page_count,
+        "widgets": widget_count,
+        "images": image_count,
+    }
+
+
+def convert(input_path: str, output_path: str, status_path: str, max_pages: int):
+    status = convert_pdf_to_word(input_path, output_path, max_pages)
+    Path(status_path).write_text(json.dumps(status), encoding="utf-8")
 
 
 if __name__ == "__main__":

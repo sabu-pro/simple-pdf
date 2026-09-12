@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:vercel-worker": "python tests/test_vercel_edit_worker.py",
+    "test:vercel-worker": "python -m unittest tests.test_vercel_edit_worker tests.test_vercel_pdf_to_word_worker",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "postinstall": "node scripts/copy-pdf-assets.mjs"
@@ -18,6 +18,11 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@expo-google-fonts/arimo": "^0.4.3",
+    "@expo-google-fonts/caladea": "^0.4.2",
+    "@expo-google-fonts/carlito": "^0.4.1",
+    "@expo-google-fonts/cousine": "^0.4.3",
+    "@expo-google-fonts/tinos": "^0.4.2",
     "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/caveat": "^5.3.0",
     "@napi-rs/canvas": "^1.0.9",
@@ -29,6 +34,7 @@
     "pdfjs-dist": "^6.3.289",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "reamkit": "^1.29.0",
     "yauzl": "^3.4.0"
   },
   "devDependencies": {

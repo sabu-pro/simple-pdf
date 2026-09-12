@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:vercel-worker": "python tests/test_vercel_edit_worker.py",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "postinstall": "node scripts/copy-pdf-assets.mjs"

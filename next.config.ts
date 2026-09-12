@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const config: NextConfig = {
   serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas", "busboy", "yauzl"],
+  async rewrites() {
+    return process.env.VERCEL
+      ? []
+      : [{ source: "/api/edit-text-worker", destination: "/api/edit-text" }];
+  },
   async headers() {
     return [
       {

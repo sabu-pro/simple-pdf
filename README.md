@@ -67,6 +67,7 @@ npm run dev          # Local preview, bound to 127.0.0.1:3000
 npm run lint         # ESLint
 npm run typecheck    # TypeScript, without emitting files
 npm test            # Unit and integration tests, including real PDF/DOCX output
+npm run test:vercel-worker # Vercel Python text-edit endpoint
 npm run test:watch   # Interactive unit test runner
 npm run test:e2e     # Chromium workflows; reuses a running local dev server
 npm run build       # Production build
@@ -161,7 +162,9 @@ An abrupt operating-system termination can prevent `finally` from running. For d
 
 ## Production and deployment
 
-For the whole MVP, use a **dedicated Node server or container**. LibreOffice requires an installed executable, subprocesses, fonts, writable private temp space, and sufficient memory. PDF-to-Word also uses a subprocess. Vercel’s default serverless runtime is not the intended host for these conversion endpoints.
+For the whole MVP, use a **dedicated Node server or container**. LibreOffice requires an installed executable, subprocesses, fonts, writable private temp space, and sufficient memory. PDF-to-Word also uses a subprocess.
+
+On Vercel, original-text editing uses the file-based Python function in `api/edit-text-worker.py`, with PyMuPDF installed from `requirements.txt`. Vercel limits function request and response bodies to 4.5 MB, so hosted source-text editing supports PDFs up to 4 MB. Merge, added text, drawings, highlights, and signatures still run in the browser. The document-conversion endpoints require the dedicated server or container described above.
 
 The UI already talks to clean same-origin APIs, so it can later be hosted separately by proxying `/api/convert/*` and `/api/capabilities` to a dedicated processing service. No database is required to do that.
 

@@ -310,9 +310,9 @@ def insert_replacement(page: fitz.Page, prepared: dict, warnings: list[str], pag
         raise ValueError(f"Replacement text could not be inserted on page {page_number}.")
 
 
-def edit_pdf(input_path: str, edits_path: str, output_path: str, status_path: str):
-    edits = json.loads(Path(edits_path).read_text(encoding="utf-8"))
-    document = fitz.open(input_path)
+def edit_pdf_bytes(input_bytes: bytes, edits: list[dict]) -> tuple[bytes, list[str]]:
+    """Apply validated source-text edits and return the new PDF without persistent storage."""
+    document = fitz.open(stream=input_bytes, filetype="pdf")
     warnings: list[str] = []
     plans: dict[int, list[dict]] = {}
     try:
@@ -351,11 +351,11 @@ def edit_pdf(input_path: str, edits_path: str, output_path: str, status_path: st
                 if item["prepared"] is not None:
                     insert_replacement(page, item["prepared"], warnings, page_index + 1)
 
-        document.save(output_path, garbage=4, clean=True, deflate=True)
+        output_bytes = document.tobytes(garbage=4, clean=True, deflate=True)
     finally:
         document.close()
 
-    check = fitz.open(output_path)
+    check = fitz.open(stream=output_bytes, filetype="pdf")
     try:
         for page_index, page_plans in plans.items():
             page = check[page_index]
@@ -378,8 +378,15 @@ def edit_pdf(input_path: str, edits_path: str, output_path: str, status_path: st
                         raise ValueError(f"Replacement text could not be verified on page {page_index + 1}.")
     finally:
         check.close()
+    return output_bytes, sorted(set(warnings))
+
+
+def edit_pdf(input_path: str, edits_path: str, output_path: str, status_path: str):
+    edits = json.loads(Path(edits_path).read_text(encoding="utf-8"))
+    output_bytes, warnings = edit_pdf_bytes(Path(input_path).read_bytes(), edits)
+    Path(output_path).write_bytes(output_bytes)
     Path(status_path).write_text(
-        json.dumps({"ok": True, "applied": len(edits), "warnings": sorted(set(warnings))}),
+        json.dumps({"ok": True, "applied": len(edits), "warnings": warnings}),
         encoding="utf-8",
     )
 

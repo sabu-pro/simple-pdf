@@ -10,7 +10,7 @@ export async function applySourceTextEdits(
   const data = new FormData();
   data.append("file", new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), filename);
   data.append("edits", JSON.stringify(validated));
-  const response = await fetch("/api/edit-text", { method: "POST", body: data });
+  const response = await fetch("/api/edit-text-worker", { method: "POST", body: data });
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     throw new Error(body?.error || "We couldn’t apply the source text edits.");

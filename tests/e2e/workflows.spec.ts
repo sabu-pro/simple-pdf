@@ -46,6 +46,7 @@ test("homepage, five tools, and mobile navigation", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toContainText("PDF editing");
   await expect(page.locator(".tool-card")).toHaveCount(5);
+  await expect(page.locator("footer")).toContainText("© 2026 SimplePDF. Built by Sabut B K.");
   await page.screenshot({ path: path.join(screenshots, "home-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Open menu" }).click();

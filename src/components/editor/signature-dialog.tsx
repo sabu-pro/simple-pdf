@@ -263,7 +263,7 @@ export function SignatureDialog({
         {error && <Notice kind="error">{error}</Notice>}
         <div className="action-row">
           <span className="text-xs text-muted">
-            A visual signature, without a digital certificate.
+            This creates a visual signature, not a digital certificate.
           </span>
           <Button onClick={() => void insert()} disabled={busy}>
             Place signature

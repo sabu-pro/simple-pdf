@@ -147,8 +147,8 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
         title={word ? "Word to PDF. Ready to share." : "Your PDF, in editable Word."}
         description={
           word
-            ? "Convert a DOCX document into a PDF using the free LibreOffice engine on this server."
-            : "Convert a text-based PDF into an editable DOCX while retaining its layout, tables, columns, images and text styling as closely as possible."
+            ? "Convert a DOCX document to PDF while preserving its layout and fonts where possible."
+            : "Convert a text-based PDF to an editable DOCX while preserving its layout, tables, columns, images and text formatting where possible."
         }
       />
       <div className="tool-columns">
@@ -205,8 +205,8 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
               </div>
               <p className="text-xs text-muted leading-6">
                 {word
-                  ? "Your file will be uploaded temporarily to this server for conversion. Review the resulting PDF for any layout changes."
-                  : "Your file is uploaded temporarily for conversion and deleted when the job finishes. Text, tables, columns, images, fonts, spacing and page boundaries are retained where the PDF structure allows."}
+                  ? "Your file is uploaded temporarily for conversion and deleted when processing finishes. Review the PDF for layout changes."
+                  : "Your file is uploaded temporarily for conversion and deleted when processing finishes. Layout and formatting are preserved where the PDF structure allows."}
               </p>
               <div className="action-row">
                 <Button
@@ -266,13 +266,13 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
           )}
         </div>
         <aside className="panel help-panel self-start">
-          <h2>{word ? "A reliable first impression." : "What to expect"}</h2>
+          <h2>What to expect</h2>
           {word ? (
             <>
               <ol>
                 <li>Choose a DOCX Word document.</li>
-                <li>Convert it with LibreOffice.</li>
-                <li>Download and check your PDF.</li>
+                <li>Convert it to PDF.</li>
+                <li>Download and review your PDF.</li>
               </ol>
               <p className="mt-6">
                 Complex layouts and missing fonts can change the result. Legacy .doc files aren’t
@@ -282,13 +282,12 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
           ) : (
             <>
               <p>
-                Text-based PDFs work best. The converter analyses page geometry and recreates
-                editable text, tables, columns, images, type styling, alignment, spacing and page
-                boundaries where practical.
+                Text-based PDFs work best. The converter uses the page layout to recreate editable
+                text, tables, columns, images, formatting, spacing and page breaks where possible.
               </p>
               <p className="mt-4">
-                Scanned or image-only PDFs need OCR. This version detects pages without a text layer
-                and explains when OCR may be required.
+                Scanned or image-only PDFs need OCR, which isn’t included. SimplePDF will let you
+                know when a file has no text layer.
               </p>
               <p className="mt-4">
                 PDF and Word store document structure differently, so dense forms and unusual fonts

@@ -552,7 +552,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
           description={
             signing
               ? "Draw, type or upload a signature. Place it on your document and download your signed PDF."
-              : "Add text, highlights, drawings and signatures. Your original PDF stays intact while your additions remain editable here."
+              : "Edit existing text or add notes, highlights, drawings and signatures. Download a new PDF when you’re done."
           }
         />
         <UploadZone onFiles={(files) => void upload(files)} disabled={!!busy} />
@@ -591,8 +591,8 @@ export function Editor({ signing = false }: { signing?: boolean }) {
               {loaded.filename}
             </h1>
             <p className="text-[10px] text-muted mt-1">
-              {loaded.pdf.numPages} {loaded.pdf.numPages === 1 ? "page" : "pages"} · Source edits
-              process temporarily on this server
+              {loaded.pdf.numPages} {loaded.pdf.numPages === 1 ? "page" : "pages"} · Original-text
+              edits use temporary server processing
             </p>
           </div>
         </div>
@@ -757,20 +757,24 @@ export function Editor({ signing = false }: { signing?: boolean }) {
               </button>
             ))}
           </div>
-          <p className="sidebar-hint">Your original content stays intact.</p>
+          <p className="sidebar-hint">
+            {signing
+              ? "Your original content stays intact."
+              : "Edit original text or add new content."}
+          </p>
         </aside>
         <div className="editor-center">
           <div className="editor-context">
             <span>
               {tool === "select"
-                ? "Select an addition to move or edit it."
+                ? "Select added content to move it, or existing text to edit it."
                 : tool === "text"
                   ? "Click on the page to add text."
                   : tool === "draw"
                     ? "Drag on the page to draw."
                     : "Drag across an area to highlight it."}
             </span>
-            <span>Original PDF + your additions</span>
+            <span>Original PDF + your edits</span>
           </div>
           <div className="pdf-workspace" ref={workspace}>
             <div
@@ -1312,8 +1316,8 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                 Close text properties
               </Button>
               <p className="property-help">
-                This preview masks the selected run on screen. Download removes the original PDF
-                glyphs before inserting the replacement and keeps other page content intact.
+                The preview temporarily covers the selected text. Your downloaded PDF removes the
+                original text before adding the replacement.
               </p>
             </div>
           )}

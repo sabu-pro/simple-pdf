@@ -45,7 +45,7 @@ const tools = [
   {
     href: "/pdf-to-word",
     title: "PDF to Word",
-    description: "Give the text in your PDF a fresh start in an editable Word file.",
+    description: "Turn a text-based PDF into an editable Word document.",
     action: "Convert PDF",
     icon: FileOutput,
     color: "lavender",
@@ -76,7 +76,7 @@ export default function Home() {
             <span>headache.</span>
           </h1>
           <p>
-            Edit, merge, convert and sign your PDFs in seconds.
+            Edit, merge, convert and sign your PDFs in one place.
             <br className="desktop-only" /> Everyday documents, made easy.
           </p>
           <div className="hero-actions">
@@ -95,7 +95,7 @@ export default function Home() {
               <Check size={15} /> No sign-up
             </span>
             <span>
-              <Check size={15} /> All in your browser
+              <Check size={15} /> Temporary uploads deleted
             </span>
           </div>
         </div>
@@ -211,12 +211,12 @@ export default function Home() {
           <div>
             <Zap size={21} />
             <h3>Keep things moving</h3>
-            <p>Edit, merge and sign right in your browser.</p>
+            <p>Edit, merge and sign with simple, focused tools.</p>
           </div>
           <div>
             <ShieldCheck size={21} />
             <h3>Your files, your business</h3>
-            <p>No accounts or tracking. Browser edits stay on your device.</p>
+            <p>No accounts or tracking. Server-processed files are temporary.</p>
           </div>
           <div>
             <Monitor size={21} />

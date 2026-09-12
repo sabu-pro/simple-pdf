@@ -26,7 +26,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           </Link>
           <span>A little less paperwork. A little more done.</span>
           <span>No accounts. No subscriptions.</span>
-          <span>© 2026 sabutcopyright2026</span>
+          <span>© 2026 SimplePDF. Built by Sabut B K.</span>
         </footer>
       </body>
     </html>

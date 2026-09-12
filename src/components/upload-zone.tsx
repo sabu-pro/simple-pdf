@@ -82,8 +82,8 @@ export function UploadZone({
         <p className="privacy-note">
           <ShieldCheck size={16} className="shrink-0 mt-0.5" />
           {local
-            ? "Processed in your browser. Your files stay on your device."
-            : "Conversion files are processed temporarily on this server and deleted after processing."}
+            ? "Opened in your browser. Files are uploaded only when a tool needs temporary server processing."
+            : "Files are uploaded temporarily for conversion and deleted after processing."}
         </p>
       )}
     </div>

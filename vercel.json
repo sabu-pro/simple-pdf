@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/api/edit-text", "destination": "/api/edit-text-worker" }],
   "functions": {
     "api/**/*.py": {
       "maxDuration": 180,

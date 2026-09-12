@@ -19,9 +19,31 @@ type EditStatus = {
   warnings?: string[];
 };
 
+async function forwardToVercelWorker(request: Request) {
+  const contentType = request.headers.get("content-type");
+  if (!contentType) return Response.json({ error: "Choose a PDF to edit." }, { status: 400 });
+  try {
+    const deploymentHost = process.env.VERCEL_URL;
+    if (!deploymentHost) throw new Error("Missing deployment host");
+    const headers = new Headers({ "Content-Type": contentType });
+    return await fetch(`https://${deploymentHost}/api/edit-text-worker`, {
+      method: "POST",
+      headers,
+      body: await request.arrayBuffer(),
+      signal: request.signal,
+    });
+  } catch {
+    return Response.json(
+      { error: "The hosted text-editing service could not be reached. Please try again." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   if (!isSameOrigin(request))
     return Response.json({ error: "Use the PDF editor on this site." }, { status: 403 });
+  if (process.env.VERCEL === "1") return forwardToVercelWorker(request);
   if (activeJobs >= 2)
     return Response.json(
       { error: "Two PDFs are already being processed. Please try again shortly." },

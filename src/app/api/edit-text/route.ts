@@ -23,15 +23,20 @@ async function forwardToVercelWorker(request: Request) {
   const contentType = request.headers.get("content-type");
   if (!contentType) return Response.json({ error: "Choose a PDF to edit." }, { status: 400 });
   try {
-    const deploymentHost = process.env.VERCEL_URL;
+    const deploymentHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
     if (!deploymentHost) throw new Error("Missing deployment host");
     const headers = new Headers({ "Content-Type": contentType });
-    return await fetch(`https://${deploymentHost}/api/edit-text-worker`, {
+    const response = await fetch(`https://${deploymentHost}/api/edit-text-worker`, {
       method: "POST",
       headers,
       body: await request.arrayBuffer(),
       signal: request.signal,
+      redirect: "error",
     });
+    const responseType = response.headers.get("content-type") || "";
+    if (!responseType.startsWith("application/pdf") && !responseType.startsWith("application/json"))
+      throw new Error("Unexpected worker response");
+    return response;
   } catch {
     return Response.json(
       { error: "The hosted text-editing service could not be reached. Please try again." },

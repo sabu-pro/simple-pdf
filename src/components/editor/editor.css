@@ -1,0 +1,404 @@
+.editor-shell {
+  background: #f7f9f6;
+  min-height: calc(100vh - 160px);
+}
+.editor-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding: 18px 25px;
+  background: white;
+  border-bottom: 1px solid var(--border);
+}
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 23px;
+  background: white;
+  border-bottom: 1px solid var(--border);
+}
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.toolbar-group + .toolbar-group {
+  border-left: 1px solid var(--border);
+  padding-left: 10px;
+}
+.tool-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 11px;
+  font-size: 11px;
+  border-radius: 6px;
+  color: #647168;
+  border: 1px solid transparent;
+}
+.tool-button:hover {
+  background: #f0f5f1;
+}
+.tool-button.active {
+  color: #087e65;
+  background: #e6f3eb;
+  border-color: #d0e7d8;
+}
+.zoom-label {
+  font-size: 10px;
+  min-width: 38px;
+  text-align: center;
+}
+.editor-body {
+  display: grid;
+  grid-template-columns: 142px minmax(0, 1fr) 223px;
+}
+.editor-sidebar {
+  background: #fcfdfb;
+  border-right: 1px solid var(--border);
+  padding: 20px 14px;
+}
+.sidebar-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 1px;
+  color: #7a867d;
+  margin-bottom: 19px;
+}
+.sidebar-label span {
+  background: #e9eee8;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+.page-list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  max-height: 65vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+.page-list-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 12px;
+  border: 1px solid #e0e6de;
+  border-radius: 7px;
+  background: white;
+  font-size: 10px;
+  color: #839087;
+}
+.page-list-item.active {
+  border-color: #50a37a;
+  background: #ecf6ef;
+  color: #2c7a56;
+}
+.page-edit-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #087e65;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+.sidebar-hint {
+  font-size: 9px;
+  color: #8a968c;
+  line-height: 1.7;
+  margin: 22px 5px 0;
+}
+.editor-center {
+  min-width: 0;
+}
+.editor-context {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 22px;
+  color: #7a867e;
+  font-size: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.pdf-workspace {
+  padding: 28px 24px 38px;
+  overflow: auto;
+  background: #eaf0ea;
+  height: calc(100vh - 326px);
+  min-height: 440px;
+}
+.pdf-sheet {
+  position: relative;
+  margin-inline: auto;
+  box-shadow: 0 3px 18px #2335251a;
+  background: white;
+  flex-shrink: 0;
+}
+.pdf-sheet canvas {
+  display: block;
+}
+.page-loading {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 8px 12px;
+  background: #fffffff2;
+  border-radius: 5px;
+  font-size: 11px;
+  pointer-events: none;
+}
+.editor-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  overflow: visible;
+}
+.cursor-text {
+  cursor: text;
+}
+.cursor-draw,
+.cursor-highlight {
+  cursor: crosshair;
+}
+.cursor-select g {
+  cursor: move;
+}
+.resize-handle {
+  cursor: nwse-resize;
+}
+.page-navigation {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  background: white;
+  padding: 7px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: #6f7b72;
+}
+.page-navigation select {
+  border: 1px solid var(--border);
+  padding: 4px;
+  border-radius: 4px;
+  margin-inline: 5px;
+}
+.properties-panel {
+  border-left: 1px solid var(--border);
+  background: #fcfdfb;
+  padding: 23px 18px;
+  overflow: auto;
+  max-height: calc(100vh - 210px);
+}
+.property-help {
+  font-size: 10px;
+  line-height: 1.9;
+  color: #7c897f;
+}
+.properties-panel input[type="color"] {
+  width: 100%;
+  height: 32px;
+  border: 1px solid #dde5dd;
+  border-radius: 5px;
+  padding: 4px;
+  background: white;
+  cursor: pointer;
+}
+.properties-panel input[type="range"] {
+  accent-color: #087e65;
+  width: 100%;
+}
+.editor-success {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 24px;
+  background: #e2f3e7;
+  color: #256d4c;
+  font-size: 11px;
+}
+.editor-intro {
+  display: flex;
+  justify-content: center;
+  gap: 35px;
+  margin-top: 40px;
+  color: #65786a;
+  font-size: 12px;
+}
+.editor-intro span {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+}
+.signature-dialog {
+  width: min(590px, calc(100vw - 32px));
+  border: 1px solid #dce6df;
+  padding: 28px;
+  border-radius: 15px;
+  margin: auto;
+  color: var(--ink);
+  max-height: 90dvh;
+  overflow-y: auto;
+  box-shadow: 0 25px 80px #10221833;
+}
+.signature-dialog::backdrop {
+  background: #172b2580;
+  backdrop-filter: blur(3px);
+}
+.signature-dialog h2 {
+  font-size: 24px;
+}
+.signature-tabs {
+  display: flex;
+  gap: 4px;
+  background: #f0f4ef;
+  padding: 4px;
+  border-radius: 7px;
+  margin-bottom: 20px;
+}
+.signature-tabs button {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  padding: 9px;
+  border-radius: 5px;
+  color: #7a877c;
+}
+.signature-tabs button[aria-selected="true"] {
+  background: white;
+  color: #237658;
+  box-shadow: 0 1px 3px #233b2610;
+}
+.signature-canvas {
+  width: 100%;
+  height: auto;
+  border: 1px dashed #b9cabc;
+  border-radius: 8px;
+  background: linear-gradient(transparent 74%, #e6ece7 74%, #e6ece7 74.5%, transparent 74.5%);
+  touch-action: none;
+  cursor: crosshair;
+}
+.typed-preview {
+  min-height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44px;
+  border: 1px dashed #c0d1c5;
+  background: #fafcf9;
+  padding: 12px;
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+.uploaded-signature {
+  padding: 15px;
+  background: #f2f5f0;
+  border: 1px dashed #c0d1c5;
+  border-radius: 7px;
+}
+.uploaded-signature svg {
+  max-height: 140px;
+  margin: auto;
+  width: 100%;
+}
+.editor-overlay {
+  overflow: hidden;
+}
+@media (max-width: 1100px) {
+  .editor-body {
+    grid-template-columns: 105px minmax(0, 1fr) 195px;
+  }
+  .editor-sidebar {
+    padding-inline: 8px;
+  }
+  .page-list-item {
+    gap: 6px;
+    padding: 8px;
+  }
+  .editor-context > span:last-child {
+    display: none;
+  }
+  .properties-panel {
+    padding-inline: 13px;
+  }
+  .tool-button {
+    padding-inline: 8px;
+  }
+}
+@media (max-width: 800px) {
+  .editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .editor-sidebar {
+    display: none;
+  }
+  .properties-panel {
+    max-height: none;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+  .properties-panel > .space-y-4 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .properties-panel > .space-y-4 > * {
+    margin: 0;
+  }
+  .properties-panel > .space-y-4 > .field:first-child {
+    grid-column: span 2;
+  }
+  .editor-titlebar {
+    padding: 15px;
+  }
+  .editor-titlebar .btn {
+    padding: 9px 11px;
+  }
+  .editor-toolbar {
+    padding: 8px 12px;
+    gap: 5px;
+  }
+  .tool-button span {
+    display: none;
+  }
+  .tool-button {
+    min-width: 36px;
+  }
+  .toolbar-group + .toolbar-group {
+    padding-left: 5px;
+  }
+  .toolbar-group.ml-auto {
+    margin-left: 0;
+  }
+  .pdf-workspace {
+    height: 60vh;
+    min-height: 350px;
+  }
+  .open-another {
+    display: none;
+  }
+  .editor-intro {
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+  }
+  .signature-dialog {
+    padding: 20px;
+  }
+}

@@ -1,0 +1,24 @@
+services:
+  simplepdf:
+    build: .
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      MAX_UPLOAD_MB: 50
+      CONVERSION_TIMEOUT_MS: 90000
+      MAX_PDF_PAGES: 300
+      TEMP_DIRECTORY: /tmp/jobs
+    read_only: true
+    tmpfs:
+      - /tmp:size=536870912,mode=1777
+    mem_limit: 2g
+    pids_limit: 128
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - isolated
+networks:
+  isolated:
+    internal: true

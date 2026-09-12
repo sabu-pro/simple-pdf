@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+coverage/
+test-results/
+playwright-report/
+.env*
+!.env.example
+*.tsbuildinfo
+*.log
+public/pdfjs/
+.local/
+__pycache__/
+*.pyc

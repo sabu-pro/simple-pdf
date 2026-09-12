@@ -1,0 +1,11 @@
+node_modules
+.next
+.local
+public/pdfjs
+test-results
+playwright-report
+coverage
+package-lock.json
+next-env.d.ts
+AGENTS.md
+CLAUDE.md

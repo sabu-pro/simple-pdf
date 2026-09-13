@@ -105,7 +105,7 @@ class VercelEditWorkerTest(unittest.TestCase):
                 "width": blank_before.width,
                 "height": blank_before.height,
                 "originalText": "__________",
-                "replacementText": "Sample User",
+                "replacementText": "____Sample User________",
                 "deleted": False,
                 "fontSize": 12,
                 "rotation": 0,
@@ -142,6 +142,44 @@ class VercelEditWorkerTest(unittest.TestCase):
         self.assertAlmostEqual(label_after.x0, label_before.x0, delta=0.1)
         self.assertAlmostEqual(label_after.x1, label_before.x1, delta=0.1)
         edited.close()
+
+    def test_warns_only_after_an_unextractable_replacement_visibly_renders(self):
+        document = pymupdf.open()
+        page = document.new_page(width=300, height=180)
+        page.insert_text((50, 90), "Original", fontname="helv", fontsize=12)
+        rect = page.search_for("Original")[0]
+        source = document.tobytes()
+        document.close()
+        edits = [
+            {
+                "id": "source-1-visual-fallback",
+                "pageIndex": 0,
+                "x": rect.x0,
+                "y": rect.y0,
+                "width": rect.width,
+                "height": rect.height,
+                "originalText": "Original",
+                "replacementText": "Updated",
+                "deleted": False,
+                "fontSize": 12,
+                "rotation": 0,
+                "direction": "ltr",
+            }
+        ]
+
+        with patch.object(EDIT_TEXT, "verification_text", return_value=""):
+            output, warnings = EDIT_TEXT.edit_pdf_bytes(source, edits)
+        self.assertTrue(any("was rendered" in warning for warning in warnings))
+        edited = pymupdf.open(stream=output, filetype="pdf")
+        self.assertTrue(edited[0].search_for("Updated"))
+        edited.close()
+
+        with (
+            patch.object(EDIT_TEXT, "verification_text", return_value=""),
+            patch.object(EDIT_TEXT, "rendered_replacement_changed", return_value=False),
+        ):
+            with self.assertRaisesRegex(ValueError, "could not be verified"):
+                EDIT_TEXT.edit_pdf_bytes(source, edits)
 
 
 if __name__ == "__main__":

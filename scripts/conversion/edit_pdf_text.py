@@ -25,6 +25,7 @@ except ImportError as error:
 
 _VERTICAL_GRID_LINES: dict[int, list[tuple[float, float, float]]] = {}
 _DEBUG_TEXT_EDIT = os.getenv("SIMPLEPDF_DEBUG_TEXT_EDIT", "").lower() in {"1", "true", "yes"}
+_DECORATIVE_LINE_CHARACTERS = frozenset("_\u2017\u203e\u2500\u2501")
 
 
 def clean(value: str) -> str:
@@ -40,6 +41,31 @@ def comparison_key(value: str) -> str:
     )
 
 
+def is_decorative_text_run(value: str) -> bool:
+    visible = [character for character in value if not character.isspace()]
+    return len(visible) >= 2 and all(
+        character in _DECORATIVE_LINE_CHARACTERS for character in visible
+    )
+
+
+def normalize_replacement_text(original: str, replacement: str) -> str:
+    if not is_decorative_text_run(original):
+        return replacement
+    start = 0
+    end = len(replacement)
+    while start < end and (
+        replacement[start].isspace()
+        or replacement[start] in _DECORATIVE_LINE_CHARACTERS
+    ):
+        start += 1
+    while end > start and (
+        replacement[end - 1].isspace()
+        or replacement[end - 1] in _DECORATIVE_LINE_CHARACTERS
+    ):
+        end -= 1
+    return replacement[start:end]
+
+
 def rect_values(rect: fitz.Rect) -> list[float]:
     return [round(float(value), 3) for value in (rect.x0, rect.y0, rect.x1, rect.y1)]
 
@@ -50,6 +76,7 @@ def debug_verification(
     nearby: str,
     verification_text: str,
     extracted: list[dict],
+    visual_change: bool | None,
 ) -> None:
     if not _DEBUG_TEXT_EDIT:
         return
@@ -67,6 +94,7 @@ def debug_verification(
                 "nearbyText": nearby,
                 "verificationText": verification_text,
                 "extractedSpans": extracted,
+                "visualChange": visual_change,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -157,6 +185,69 @@ def verification_text(extracted: list[dict], rect: fitz.Rect) -> str:
         if target.contains(centre):
             selected.append(span["text"])
     return " ".join(selected)
+
+
+def render_region(page: fitz.Page, rect: fitz.Rect, template: dict | None = None) -> dict | None:
+    try:
+        if template is None:
+            clip = fitz.Rect(rect)
+            clip.x0 -= 2
+            clip.x1 += 2
+            clip.y0 -= 2
+            clip.y1 += 2
+            clip &= page.rect
+            if clip.is_empty:
+                return None
+            area = max(1.0, clip.width * clip.height)
+            scale = min(2.0, max(0.5, math.sqrt(16_384 / area)))
+        else:
+            clip = fitz.Rect(template["clip"])
+            scale = float(template["scale"])
+        pixmap = page.get_pixmap(
+            matrix=fitz.Matrix(scale, scale),
+            colorspace=fitz.csGRAY,
+            alpha=False,
+            clip=clip,
+        )
+        return {
+            "clip": tuple(clip),
+            "scale": scale,
+            "width": pixmap.width,
+            "height": pixmap.height,
+            "samples": bytes(pixmap.samples),
+        }
+    except Exception:
+        return None
+
+
+def rendered_replacement_changed(page: fitz.Page, item: dict) -> bool:
+    before = item.get("redacted_render")
+    if before is None:
+        return False
+    after = render_region(page, fitz.Rect(item["match"]["rect"]), before)
+    if (
+        after is None
+        or after["width"] != before["width"]
+        or after["height"] != before["height"]
+        or len(after["samples"]) != len(before["samples"])
+    ):
+        return False
+    deltas = [
+        abs(current - previous)
+        for previous, current in zip(before["samples"], after["samples"])
+    ]
+    changed = sum(delta >= 24 for delta in deltas)
+    minimum = max(6, int(len(deltas) * 0.0008))
+    return changed >= minimum and sum(deltas) >= minimum * 32
+
+
+def safely_rendered_ascii(replacement: str, page: fitz.Page, item: dict) -> bool:
+    return (
+        bool(replacement)
+        and replacement.isascii()
+        and all(character.isprintable() or character.isspace() for character in replacement)
+        and rendered_replacement_changed(page, item)
+    )
 
 
 def closest_style(spans: list[dict], rect: fitz.Rect) -> dict | None:
@@ -414,6 +505,14 @@ def edit_pdf_bytes(input_bytes: bytes, edits: list[dict]) -> tuple[bytes, list[s
     plans: dict[int, list[dict]] = {}
     try:
         for edit in edits:
+            edit = {
+                **edit,
+                "replacementText": normalize_replacement_text(
+                    edit["originalText"], edit["replacementText"]
+                ),
+            }
+            if not edit["deleted"] and not clean(edit["replacementText"]):
+                raise ValueError("Enter replacement text or choose Delete.")
             page_index = int(edit["pageIndex"])
             if page_index < 0 or page_index >= len(document):
                 raise ValueError(f"Page {page_index + 1} does not exist in this PDF.")
@@ -446,6 +545,11 @@ def edit_pdf_bytes(input_bytes: bytes, edits: list[dict]) -> tuple[bytes, list[s
             )
             for item in page_plans:
                 if item["prepared"] is not None:
+                    item["redacted_render"] = render_region(
+                        page, fitz.Rect(item["match"]["rect"])
+                    )
+            for item in page_plans:
+                if item["prepared"] is not None:
                     insert_replacement(page, item["prepared"], warnings, page_index + 1)
 
         output_bytes = document.tobytes(garbage=4, clean=True, deflate=True)
@@ -462,16 +566,27 @@ def edit_pdf_bytes(input_bytes: bytes, edits: list[dict]) -> tuple[bytes, list[s
                 nearby = page.get_textbox(matched_rect)
                 extracted = verification_spans(page, matched_rect)
                 extracted_text = verification_text(extracted, matched_rect)
+                original_key = comparison_key(edit["originalText"])
+                replacement_key = comparison_key(edit["replacementText"])
+                extracted_key = comparison_key(extracted_text)
+                replacement_mismatch = (
+                    not edit["deleted"]
+                    and clean(edit["replacementText"]) != clean(edit["originalText"])
+                    and (not replacement_key or replacement_key not in extracted_key)
+                )
+                visual_change = (
+                    safely_rendered_ascii(edit["replacementText"], page, item)
+                    if replacement_mismatch
+                    else None
+                )
                 debug_verification(
                     page_index + 1,
                     item,
                     nearby,
                     extracted_text,
                     extracted,
+                    visual_change,
                 )
-                original_key = comparison_key(edit["originalText"])
-                replacement_key = comparison_key(edit["replacementText"])
-                extracted_key = comparison_key(extracted_text)
                 if edit["deleted"]:
                     if original_key and original_key in extracted_key:
                         raise ValueError(f"Source text removal could not be verified on page {page_index + 1}.")
@@ -483,8 +598,16 @@ def edit_pdf_bytes(input_bytes: bytes, edits: list[dict]) -> tuple[bytes, list[s
                         raise ValueError(
                             f"Source text removal could not be verified on page {page_index + 1}."
                         )
-                    if not replacement_key or replacement_key not in extracted_key:
-                        raise ValueError(f"Replacement text could not be verified on page {page_index + 1}.")
+                    if replacement_mismatch:
+                        if visual_change:
+                            warnings.append(
+                                f"Replacement text on page {page_index + 1} was rendered, but its "
+                                "text encoding could not be fully verified. Review the downloaded PDF."
+                            )
+                        else:
+                            raise ValueError(
+                                f"Replacement text could not be verified on page {page_index + 1}."
+                            )
     finally:
         check.close()
     return output_bytes, sorted(set(warnings))

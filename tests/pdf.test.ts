@@ -13,7 +13,11 @@ import {
 import { exportPdf } from "@/lib/pdf/export";
 import { historyReducer } from "@/lib/editor/history";
 import { buildTextLayerModel } from "@/lib/pdf/text-layer";
-import { validateSourceTextEdits } from "@/lib/pdf/source-edits";
+import {
+  normalizeSourceReplacement,
+  sourceReplacementDraft,
+  validateSourceTextEdits,
+} from "@/lib/pdf/source-edits";
 import type { EditorDocument, PageGeometry } from "@/types/editor";
 
 async function fixture(width = 612, height = 792) {
@@ -162,6 +166,12 @@ describe("pdf text layer model", () => {
         },
       ]),
     ).toThrow("single line");
+  });
+  it("opens decorative blanks empty and removes only inherited line characters", () => {
+    expect(sourceReplacementDraft("____________")).toBe("");
+    expect(sourceReplacementDraft("Employee name")).toBe("Employee name");
+    expect(normalizeSourceReplacement("____________", "____Sample_User____")).toBe("Sample_User");
+    expect(normalizeSourceReplacement("Employee name", "_Sample User_")).toBe("_Sample User_");
   });
 });
 describe("editor model and export", () => {

@@ -2,12 +2,30 @@ import type { SourceTextEdit } from "@/types/editor";
 
 const MAX_EDITS = 500;
 const MAX_TEXT_LENGTH = 2000;
+const DECORATIVE_LINE = "_\u2017\u203e\u2500\u2501";
+const DECORATIVE_LINE_ONLY = new RegExp(`^[\\s${DECORATIVE_LINE}]{2,}$`, "u");
+const DECORATIVE_LINE_START = new RegExp(`^[\\s${DECORATIVE_LINE}]+`, "u");
+const DECORATIVE_LINE_END = new RegExp(`[\\s${DECORATIVE_LINE}]+$`, "u");
 
 function finite(value: unknown, name: string) {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`Invalid ${name} in the text edit request.`);
   }
   return value;
+}
+
+export function isDecorativeTextRun(value: string) {
+  return DECORATIVE_LINE_ONLY.test(value);
+}
+
+export function sourceReplacementDraft(originalText: string, replacementText?: string) {
+  if (replacementText !== undefined) return replacementText;
+  return isDecorativeTextRun(originalText) ? "" : originalText;
+}
+
+export function normalizeSourceReplacement(originalText: string, replacementText: string) {
+  if (!isDecorativeTextRun(originalText)) return replacementText;
+  return replacementText.replace(DECORATIVE_LINE_START, "").replace(DECORATIVE_LINE_END, "");
 }
 
 export function validateSourceTextEdits(value: unknown): SourceTextEdit[] {

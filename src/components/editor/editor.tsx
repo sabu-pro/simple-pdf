@@ -28,6 +28,7 @@ import { loadPdf } from "@/lib/pdf/core";
 import { openBrowserPdf } from "@/lib/pdf/browser";
 import { exportPdf } from "@/lib/pdf/export";
 import { applySourceTextEdits } from "@/lib/pdf/source-edit-client";
+import { normalizeSourceReplacement, sourceReplacementDraft } from "@/lib/pdf/source-edits";
 import { historyReducer } from "@/lib/editor/history";
 import { createMarkObject, createObject } from "@/lib/editor/model";
 import { clientToPage } from "@/lib/editor/coordinates";
@@ -401,7 +402,9 @@ export function Editor({ signing = false }: { signing?: boolean }) {
       setSelectedId(undefined);
       const block = sourceBlocks.find((item) => item.id === sourceId);
       const edit = sourceTextEdits.find((item) => item.id === sourceId);
-      setSourceDraft(edit?.deleted ? "" : (edit?.replacementText ?? block?.text ?? ""));
+      setSourceDraft(
+        edit?.deleted ? "" : sourceReplacementDraft(block?.text ?? "", edit?.replacementText),
+      );
       gesture.current = null;
       event.preventDefault();
       return;
@@ -916,7 +919,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                           setSourceDraft(
                             currentEdit?.deleted
                               ? ""
-                              : (currentEdit?.replacementText ?? block.text),
+                              : sourceReplacementDraft(block.text, currentEdit?.replacementText),
                           );
                           window.requestAnimationFrame(() => sourceInput.current?.focus());
                         }}
@@ -925,7 +928,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                           setSourceDraft(
                             currentEdit?.deleted
                               ? ""
-                              : (currentEdit?.replacementText ?? block.text),
+                              : sourceReplacementDraft(block.text, currentEdit?.replacementText),
                           );
                         }}
                         onKeyDown={(event) => {
@@ -935,7 +938,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                             setSourceDraft(
                               currentEdit?.deleted
                                 ? ""
-                                : (currentEdit?.replacementText ?? block.text),
+                                : sourceReplacementDraft(block.text, currentEdit?.replacementText),
                             );
                           }
                         }}
@@ -1395,19 +1398,21 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                   onClick={() => {
                     const sourceText = selectedSourceText;
                     if (!sourceText) return;
-                    if (!sourceDraft.trim() || /[\r\n]/.test(sourceDraft)) {
+                    const replacement = normalizeSourceReplacement(sourceText.text, sourceDraft);
+                    if (!replacement.trim() || /[\r\n]/.test(replacement)) {
                       setError(
                         "Replacement text must be one non-empty line. Choose Delete to remove it.",
                       );
                       return;
                     }
                     setError("");
+                    setSourceDraft(replacement);
                     commitSourceTextEdits(
-                      sourceDraft === sourceText.text
+                      replacement === sourceText.text
                         ? sourceTextEdits.filter((edit) => edit.id !== sourceText.id)
                         : upsertSourceEdit(
                             sourceTextEdits,
-                            sourceEditFor(sourceText, sourceDraft, false),
+                            sourceEditFor(sourceText, replacement, false),
                           ),
                     );
                   }}
@@ -1437,7 +1442,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                     commitSourceTextEdits(
                       sourceTextEdits.filter((edit) => edit.id !== selectedSourceId),
                     );
-                    setSourceDraft(selectedSourceText?.text ?? "");
+                    setSourceDraft(sourceReplacementDraft(selectedSourceText?.text ?? ""));
                   }}
                 >
                   Undo this text edit

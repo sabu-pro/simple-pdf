@@ -34,7 +34,13 @@ import { createMarkObject, createObject } from "@/lib/editor/model";
 import { clientToPage } from "@/lib/editor/coordinates";
 import { extractTextPage, type PdfTextBlock, type PdfTextLayerModel } from "@/lib/pdf/text-layer";
 import { downloadBytes, outputName } from "@/lib/files/download";
-import { errorMessage, validateFile } from "@/lib/files/validation";
+import { readBlobBytes } from "@/lib/files/browser-file";
+import {
+  errorMessage,
+  PDF_LOAD_ERROR,
+  UserFacingError,
+  validateFile,
+} from "@/lib/files/validation";
 import type {
   EditorObject,
   EditorTool,
@@ -263,15 +269,19 @@ export function Editor({ signing = false }: { signing?: boolean }) {
     setError("");
     setSuccess(false);
     setExportWarnings([]);
+    let pendingPdf: PDFDocumentProxy | undefined;
     try {
       if (files.length !== 1)
-        throw new Error("Open one PDF at a time. Use Merge PDF to combine files.");
+        throw new UserFacingError("Open one PDF at a time. Use Merge PDF to combine files.");
       const file = files[0];
       validateFile(file, "pdf");
-      const bytes = new Uint8Array(await file.arrayBuffer());
+      const bytes = await readBlobBytes(file);
       await loadPdf(bytes);
       const pdf = await openBrowserPdf(bytes);
+      pendingPdf = pdf;
       const firstTextPage = await extractTextPage(pdf, 0);
+      const first = await pdf.getPage(1),
+        viewport = first.getViewport({ scale: 1 });
       const model: PdfTextLayerModel = {
         pageCount: pdf.numPages,
         totalPages: pdf.numPages,
@@ -279,6 +289,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
         pages: { 0: firstTextPage },
       };
       setLoaded({ filename: file.name, bytes, pdf });
+      pendingPdf = undefined;
       setPageIndex(0);
       setPages({});
       setSelectedId(undefined);
@@ -291,8 +302,6 @@ export function Editor({ signing = false }: { signing?: boolean }) {
       if (model.isScanned) {
         setError("This page appears to be scanned or image-based. Text editing requires OCR.");
       }
-      const first = await pdf.getPage(1),
-        viewport = first.getViewport({ scale: 1 });
       setScale(
         Math.max(
           0.25,
@@ -305,9 +314,8 @@ export function Editor({ signing = false }: { signing?: boolean }) {
       );
       if (signing) setSignatureOpen(true);
     } catch (error) {
-      setError(
-        errorMessage(error, "We couldn’t open this PDF. It may be damaged or password protected."),
-      );
+      setError(errorMessage(error, PDF_LOAD_ERROR));
+      await pendingPdf?.loadingTask.destroy().catch(() => {});
     } finally {
       setBusy(null);
     }
@@ -1010,7 +1018,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                               ? `Text: ${object.content}`
                               : object.type === "mark"
                                 ? `Mark: ${markLabel(object.mark)}`
-                              : `${object.type} addition`
+                                : `${object.type} addition`
                           }
                           aria-pressed={selectedId === object.id}
                           onFocus={() => setSelectedId(object.id)}

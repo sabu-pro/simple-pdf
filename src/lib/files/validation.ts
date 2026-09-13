@@ -5,6 +5,9 @@ export const CLIENT_MAX_BYTES =
   1024;
 export type FileKind = "pdf" | "docx" | "image";
 export type FileInfo = { name: string; size: number; type: string };
+// Only explicitly authored messages are safe to show to users.
+export class UserFacingError extends Error {}
+export const PDF_LOAD_ERROR = "Something went wrong loading this PDF — please try again.";
 const allowed = {
   pdf: { extensions: ["pdf"], mime: ["application/pdf"] },
   docx: {
@@ -17,7 +20,7 @@ const allowed = {
 export function validateFile(file: FileInfo, kind: FileKind, maxBytes = CLIENT_MAX_BYTES) {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
   if (!allowed[kind].extensions.includes(extension))
-    throw new Error(
+    throw new UserFacingError(
       `Choose ${kind === "image" ? "a PNG or JPG image" : `a ${kind.toUpperCase()} file`}.`,
     );
   if (
@@ -25,10 +28,12 @@ export function validateFile(file: FileInfo, kind: FileKind, maxBytes = CLIENT_M
     file.type !== "application/octet-stream" &&
     !allowed[kind].mime.includes(file.type.toLowerCase())
   )
-    throw new Error("The file type does not match its extension.");
-  if (!file.size) throw new Error("This file is empty. Please choose another file.");
+    throw new UserFacingError("The file type does not match its extension.");
+  if (!file.size) throw new UserFacingError("This file is empty. Please choose another file.");
   if (file.size > maxBytes)
-    throw new Error(`Choose a file smaller than ${Math.round(maxBytes / 1024 / 1024)} MB.`);
+    throw new UserFacingError(
+      `Choose a file smaller than ${Math.round(maxBytes / 1024 / 1024)} MB.`,
+    );
 }
 
 export function validateMagic(bytes: Uint8Array, kind: FileKind) {
@@ -37,7 +42,7 @@ export function validateMagic(bytes: Uint8Array, kind: FileKind) {
   const png = [137, 80, 78, 71, 13, 10, 26, 10].every((byte, i) => bytes[i] === byte);
   const jpg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
   if (!(kind === "pdf" ? pdf : kind === "docx" ? zip : png || jpg))
-    throw new Error("The file contents do not match the expected file type.");
+    throw new UserFacingError("The file contents do not match the expected file type.");
 }
 
 export function formatBytes(bytes: number) {
@@ -46,5 +51,8 @@ export function formatBytes(bytes: number) {
     : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 export function errorMessage(error: unknown, fallback = "Something went wrong. Please try again.") {
-  return error instanceof Error ? error.message : fallback;
+  if (error instanceof UserFacingError) return error.message;
+  // Keep the original exception/stack available to remote browser inspectors.
+  console.error("Document operation failed", error);
+  return fallback;
 }

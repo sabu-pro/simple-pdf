@@ -12,6 +12,7 @@
     "test:vercel-worker": "python -m unittest tests.test_vercel_edit_worker tests.test_vercel_pdf_to_word_worker",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:browser-compatibility": "playwright test --config=playwright.compatibility.config.ts",
     "postinstall": "node scripts/copy-pdf-assets.mjs"
   },
   "engines": {

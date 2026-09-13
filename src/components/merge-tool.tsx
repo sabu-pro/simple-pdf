@@ -3,9 +3,17 @@ import { useState } from "react";
 import { ArrowDown, ArrowUp, Download, FileText, GripVertical, Trash2, Files } from "lucide-react";
 import { Button, Busy, Notice, ToolHeading } from "./ui";
 import { UploadZone } from "./upload-zone";
-import { CLIENT_MAX_BYTES, errorMessage, formatBytes, validateFile } from "@/lib/files/validation";
+import {
+  CLIENT_MAX_BYTES,
+  errorMessage,
+  formatBytes,
+  PDF_LOAD_ERROR,
+  UserFacingError,
+  validateFile,
+} from "@/lib/files/validation";
 import { loadPdf, mergePdfs } from "@/lib/pdf/core";
 import { downloadBytes } from "@/lib/files/download";
+import { readBlobBytes } from "@/lib/files/browser-file";
 
 type MergeFile = { id: string; file: File; bytes: Uint8Array; pages: number };
 export function MergeTool() {
@@ -20,25 +28,26 @@ export function MergeTool() {
     setError("");
     setResult(undefined);
     try {
-      if (files.length + selected.length > 30) throw new Error("Merge up to 30 files at a time.");
+      if (files.length + selected.length > 30)
+        throw new UserFacingError("Merge up to 30 files at a time.");
       if (
         files.reduce((sum, item) => sum + item.file.size, 0) +
           selected.reduce((sum, file) => sum + file.size, 0) >
         CLIENT_MAX_BYTES * 3
       )
-        throw new Error(
+        throw new UserFacingError(
           `Keep the combined file size under ${Math.round((CLIENT_MAX_BYTES * 3) / 1024 / 1024)} MB.`,
         );
       const added: MergeFile[] = [];
       for (const file of selected) {
         validateFile(file, "pdf");
-        const bytes = new Uint8Array(await file.arrayBuffer());
+        const bytes = await readBlobBytes(file);
         const pdf = await loadPdf(bytes);
         added.push({ id: crypto.randomUUID(), file, bytes, pages: pdf.getPageCount() });
       }
       setFiles([...files, ...added]);
     } catch (error) {
-      setError(errorMessage(error));
+      setError(errorMessage(error, PDF_LOAD_ERROR));
     } finally {
       setBusy(null);
     }
@@ -57,7 +66,7 @@ export function MergeTool() {
     try {
       setResult(await mergePdfs(files.map((file) => file.bytes)));
     } catch (error) {
-      setError(errorMessage(error));
+      setError(errorMessage(error, "Something went wrong merging these PDFs — please try again."));
     } finally {
       setBusy(null);
     }

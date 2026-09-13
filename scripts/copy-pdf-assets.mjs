@@ -1,8 +1,17 @@
-import { mkdir, copyFile, cp } from "node:fs/promises";
+import { mkdir, copyFile, cp, readFile, writeFile } from "node:fs/promises";
 await mkdir("public/pdfjs", { recursive: true });
 await copyFile(
   "node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
   "public/pdfjs/pdf.worker.min.mjs",
+);
+const legacyWorker = await readFile(
+  "node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+  "utf8",
+);
+const promiseWithResolversFallback = `if(typeof Promise.withResolvers!=="function"){Object.defineProperty(Promise,"withResolvers",{configurable:true,writable:true,value:function(){let resolve,reject;const promise=new Promise((onResolve,onReject)=>{resolve=onResolve;reject=onReject});return{promise,resolve,reject}}})}\n`;
+await writeFile(
+  "public/pdfjs/pdf.worker.legacy.min.mjs",
+  promiseWithResolversFallback + legacyWorker,
 );
 for (const folder of ["cmaps", "standard_fonts", "wasm"]) {
   await cp(`node_modules/pdfjs-dist/${folder}`, `public/pdfjs/${folder}`, { recursive: true });

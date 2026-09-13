@@ -9,6 +9,7 @@ import {
   StandardFonts,
 } from "pdf-lib";
 import { loadPdf } from "./core";
+import { UserFacingError } from "@/lib/files/validation";
 import { exportMatrix } from "@/lib/editor/coordinates";
 import { deserializeDocument, serializeDocument } from "@/lib/editor/model";
 import type { EditorDocument } from "@/types/editor";
@@ -36,7 +37,7 @@ export async function exportPdf(original: Uint8Array, input: EditorDocument) {
   for (const object of model.objects) {
     const page = pdf.getPage(object.pageIndex);
     const geometry = model.pages[object.pageIndex];
-    if (!geometry) throw new Error("Please open the edited page before exporting.");
+    if (!geometry) throw new UserFacingError("Please open the edited page before exporting.");
     page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...exportMatrix(geometry)));
     // Object local coordinates are top-left based; the page graphics state is upright.
     const angle = (-object.rotation * Math.PI) / 180;
@@ -66,7 +67,7 @@ export async function exportPdf(original: Uint8Array, input: EditorDocument) {
           }),
         );
       } catch {
-        throw new Error(
+        throw new UserFacingError(
           "An added text box contains characters the editor font cannot export. Use Latin text or add those characters as a signature image.",
         );
       }

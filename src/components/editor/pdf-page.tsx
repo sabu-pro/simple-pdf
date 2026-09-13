@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Matrix, PageGeometry } from "@/types/editor";
 import { Busy } from "@/components/ui";
+import { errorMessage, PDF_LOAD_ERROR } from "@/lib/files/validation";
 
 export function PdfPage({
   document,
@@ -61,7 +62,7 @@ export function PdfPage({
           !(error instanceof Error && error.name === "RenderingCancelledException")
         ) {
           setRendering(false);
-          onError("This page could not be displayed. Try another PDF or a lower zoom level.");
+          onError(errorMessage(error, PDF_LOAD_ERROR));
         }
       }
     }

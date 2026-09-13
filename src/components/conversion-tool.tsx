@@ -7,10 +7,14 @@ import {
   CLIENT_MAX_BYTES,
   errorMessage,
   formatBytes,
+  PDF_LOAD_ERROR,
+  UserFacingError,
   validateFile,
   validateMagic,
 } from "@/lib/files/validation";
 import { downloadBytes, outputName } from "@/lib/files/download";
+import { readBlobBytes } from "@/lib/files/browser-file";
+import { conversionResponseMessage } from "@/lib/conversion/client-errors";
 
 type Phase = "idle" | "reading" | "uploading" | "processing" | "success" | "error";
 export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-to-word" }) {
@@ -64,7 +68,7 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
     setResult(undefined);
     setWarnings([]);
     try {
-      if (files.length !== 1) throw new Error("Convert one file at a time.");
+      if (files.length !== 1) throw new UserFacingError("Convert one file at a time.");
       validateFile(
         files[0],
         word ? "docx" : "pdf",
@@ -72,15 +76,19 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
           ? capabilities?.maxUploadBytes || CLIENT_MAX_BYTES
           : capabilities?.maxPdfToWordBytes || capabilities?.maxUploadBytes || CLIENT_MAX_BYTES,
       );
-      validateMagic(
-        new Uint8Array(await files[0].slice(0, 16).arrayBuffer()),
-        word ? "docx" : "pdf",
-      );
+      validateMagic(await readBlobBytes(files[0].slice(0, 16)), word ? "docx" : "pdf");
       setFile(files[0]);
       setPhase("idle");
     } catch (error) {
       setFile(undefined);
-      setError(errorMessage(error));
+      setError(
+        errorMessage(
+          error,
+          word
+            ? "Something went wrong loading this Word document — please try again."
+            : PDF_LOAD_ERROR,
+        ),
+      );
       setPhase("error");
     }
   }
@@ -93,7 +101,7 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
     setWarnings([]);
     try {
       const { convertWordToPdf } = await import("@/lib/conversion/browser-word-to-pdf");
-      const converted = await convertWordToPdf(new Uint8Array(await file.arrayBuffer()));
+      const converted = await convertWordToPdf(await readBlobBytes(file));
       if (run.current !== currentRun) return;
       const pdfBytes = new Uint8Array(converted.bytes);
       setResult(new Blob([pdfBytes.buffer], { type: "application/pdf" }));
@@ -122,57 +130,81 @@ export function ConversionTool({ direction }: { direction: "word-to-pdf" | "pdf-
     setError("");
     setResult(undefined);
     setWarnings([]);
-    const xhr = new XMLHttpRequest();
-    request.current = xhr;
-    xhr.open("POST", "/api/pdf-to-word-worker");
-    xhr.responseType = "blob";
-    xhr.timeout = 250000;
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
-    };
-    xhr.upload.onload = () => setPhase("processing");
-    xhr.onload = async () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        setResult(xhr.response);
-        setPhase("success");
+    try {
+      const xhr = new XMLHttpRequest();
+      request.current = xhr;
+      xhr.open("POST", "/api/pdf-to-word-worker");
+      xhr.responseType = "blob";
+      xhr.timeout = 250000;
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) setProgress(Math.round((event.loaded / event.total) * 100));
+      };
+      xhr.upload.onload = () => setPhase("processing");
+      xhr.onload = async () => {
         try {
-          setWarnings(
-            JSON.parse(
-              decodeURIComponent(xhr.getResponseHeader("X-Conversion-Warnings") || "%5B%5D"),
+          if (xhr.status >= 200 && xhr.status < 300) {
+            setResult(xhr.response);
+            setPhase("success");
+            try {
+              const warnings: unknown = JSON.parse(
+                decodeURIComponent(xhr.getResponseHeader("X-Conversion-Warnings") || "%5B%5D"),
+              );
+              setWarnings(
+                Array.isArray(warnings)
+                  ? warnings.filter((value): value is string => typeof value === "string")
+                  : [],
+              );
+            } catch {
+              setWarnings([]);
+            }
+          } else {
+            let message = "The server couldn’t convert this document. Please try again.";
+            try {
+              const body: unknown = JSON.parse(await (xhr.response as Blob).text());
+              message = conversionResponseMessage(body);
+            } catch {
+              /* Reverse proxies can return non-JSON errors. */
+            }
+            setError(message);
+            setPhase("error");
+          }
+        } catch (error) {
+          setResult(undefined);
+          setError(
+            errorMessage(
+              error,
+              "Something went wrong converting this document — please try again.",
             ),
           );
-        } catch {
-          setWarnings([]);
+          setPhase("error");
+        } finally {
+          request.current = undefined;
         }
-      } else {
-        let message = "The server couldn’t convert this document. Please try again.";
-        try {
-          message = JSON.parse(await (xhr.response as Blob).text()).error || message;
-        } catch {
-          /* Reverse proxies can return non-JSON errors. */
-        }
-        setError(message);
+      };
+      xhr.onerror = () => {
+        setError("Couldn’t reach the conversion server. Check your connection and try again.");
         setPhase("error");
-      }
+        request.current = undefined;
+      };
+      xhr.ontimeout = () => {
+        setError("Conversion timed out. Try a smaller or simpler document.");
+        setPhase("error");
+        request.current = undefined;
+      };
+      xhr.onabort = () => {
+        setPhase("idle");
+        request.current = undefined;
+      };
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
+    } catch (error) {
       request.current = undefined;
-    };
-    xhr.onerror = () => {
-      setError("Couldn’t reach the conversion server. Check your connection and try again.");
+      setError(
+        errorMessage(error, "Something went wrong uploading this document — please try again."),
+      );
       setPhase("error");
-      request.current = undefined;
-    };
-    xhr.ontimeout = () => {
-      setError("Conversion timed out. Try a smaller or simpler document.");
-      setPhase("error");
-      request.current = undefined;
-    };
-    xhr.onabort = () => {
-      setPhase("idle");
-      request.current = undefined;
-    };
-    const form = new FormData();
-    form.append("file", file);
-    xhr.send(form);
+    }
   }
   return (
     <div className="tool-page page-width">

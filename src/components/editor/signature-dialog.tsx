@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Eraser, X, PenLine, Type, ImagePlus } from "lucide-react";
 import { Button, Notice } from "@/components/ui";
-import { errorMessage, validateFile, validateMagic } from "@/lib/files/validation";
+import { errorMessage, UserFacingError, validateFile, validateMagic } from "@/lib/files/validation";
+import { readBlobBytes } from "@/lib/files/browser-file";
 
 function trimCanvas(canvas: HTMLCanvasElement) {
   const context = canvas.getContext("2d")!;
@@ -19,7 +20,7 @@ function trimCanvas(canvas: HTMLCanvasElement) {
         top = Math.min(top, y);
         bottom = Math.max(bottom, y);
       }
-  if (left > right) throw new Error("Add your signature first.");
+  if (left > right) throw new UserFacingError("Add your signature first.");
   const output = document.createElement("canvas");
   output.width = right - left + 17;
   output.height = bottom - top + 17;
@@ -71,11 +72,11 @@ export function SignatureDialog({
     setBusy(true);
     try {
       validateFile(file, "image", 5 * 1024 * 1024);
-      validateMagic(new Uint8Array(await file.arrayBuffer()), "image");
+      validateMagic(await readBlobBytes(file), "image");
       const bitmap = await createImageBitmap(file);
       try {
         if (bitmap.width * bitmap.height > 20_000_000)
-          throw new Error("Use a signature image smaller than 20 megapixels.");
+          throw new UserFacingError("Use a signature image smaller than 20 megapixels.");
         const output = document.createElement("canvas"),
           factor = Math.min(1, 1600 / bitmap.width, 800 / bitmap.height);
         output.width = Math.round(bitmap.width * factor);
@@ -86,7 +87,7 @@ export function SignatureDialog({
         bitmap.close();
       }
     } catch (error) {
-      setError(errorMessage(error, "Could not read this image."));
+      setError(errorMessage(error, "Something went wrong loading this image — please try again."));
     } finally {
       setBusy(false);
     }
@@ -98,10 +99,10 @@ export function SignatureDialog({
       let result: { dataUrl: string; ratio: number };
       if (tab === "draw") result = trimCanvas(canvas.current!);
       else if (tab === "upload") {
-        if (!uploaded) throw new Error("Choose a signature image first.");
+        if (!uploaded) throw new UserFacingError("Choose a signature image first.");
         result = uploaded;
       } else {
-        if (!name.trim()) throw new Error("Type your name first.");
+        if (!name.trim()) throw new UserFacingError("Type your name first.");
         await document.fonts.load(`64px "${font}"`);
         const output = document.createElement("canvas");
         output.width = 1400;

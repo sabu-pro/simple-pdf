@@ -96,6 +96,20 @@ describe("pdf text layer model", () => {
     expect(match?.width).toBeGreaterThan(0);
     expect(match?.height).toBeGreaterThan(0);
   });
+  it("separates underscore blanks from adjacent editable labels", async () => {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([612, 792]);
+    page.drawText("Full Name:__________", { x: 60, y: 720, size: 12 });
+    const model = await buildTextLayerModel(new Uint8Array(await pdf.save()), 0);
+    const blocks = model.pages[0].blocks;
+    const label = blocks.find((block) => block.text === "Full Name:");
+    const blank = blocks.find((block) => block.text === "__________");
+    expect(label).toBeDefined();
+    expect(blank).toBeDefined();
+    expect(blocks.some((block) => block.text === "Full Name:__________")).toBe(false);
+    expect(blank!.x).toBeGreaterThan(label!.x);
+    expect(Math.abs(blank!.y - label!.y)).toBeLessThan(1);
+  });
   it("flags pages with no extractable text as scanned or image-only", async () => {
     const pdf = await PDFDocument.create();
     pdf.addPage([612, 792]);

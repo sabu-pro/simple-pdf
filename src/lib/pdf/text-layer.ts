@@ -48,6 +48,38 @@ function normalizeText(value: string) {
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim();
 }
 
+type TextSegment = { text: string; start: number; end: number };
+
+function splitDecorativeLineRuns(value: string): TextSegment[] {
+  const raw = value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+  const runs = [...raw.matchAll(/[_\u2017\u203e\u2500-\u2501]{2,}/gu)];
+  if (!runs.length) {
+    const text = normalizeText(raw);
+    return text ? [{ text, start: 0, end: raw.length }] : [];
+  }
+
+  const segments: TextSegment[] = [];
+  const add = (start: number, end: number) => {
+    const part = raw.slice(start, end);
+    const leading = part.match(/^\s*/u)?.[0].length ?? 0;
+    const trailing = part.match(/\s*$/u)?.[0].length ?? 0;
+    const visibleStart = start + leading;
+    const visibleEnd = Math.max(visibleStart, end - trailing);
+    const text = raw.slice(visibleStart, visibleEnd);
+    if (text) segments.push({ text, start: visibleStart, end: visibleEnd });
+  };
+
+  let cursor = 0;
+  for (const run of runs) {
+    const start = run.index ?? cursor;
+    add(cursor, start);
+    add(start, start + run[0].length);
+    cursor = start + run[0].length;
+  }
+  add(cursor, raw.length);
+  return segments;
+}
+
 function transformedBounds(
   baselineX: number,
   baselineY: number,
@@ -89,8 +121,8 @@ export async function extractTextPage(
 
     for (const item of content.items) {
       if (!("str" in item) || !("transform" in item)) continue;
-      const text = normalizeText(item.str);
-      if (!text) continue;
+      const segments = splitDecorativeLineRuns(item.str);
+      if (!segments.length) continue;
       const transform = pdfjs.Util.transform(viewport.transform, item.transform) as [
         number,
         number,
@@ -111,34 +143,53 @@ export async function extractTextPage(
       const localTop = -ascent * fontHeight;
       const localBottom = -descent * fontHeight;
       const advance = Math.max(1, Math.abs(item.width));
-      const bounds = transformedBounds(
-        transform[4],
-        transform[5],
-        advance,
-        localTop,
-        localBottom,
-        angle,
-      );
+      const sourceLength = Math.max(1, item.str.length);
 
-      blocks.push({
-        id: `source-${pageIndex + 1}-${blocks.length}`,
-        pageIndex,
-        text,
-        ...bounds,
-        baselineX: transform[4],
-        baselineY: transform[5],
-        localTop,
-        localHeight: Math.max(1, localBottom - localTop),
-        advance,
-        position: { x: bounds.x, y: bounds.y },
-        transform,
-        fontName: item.fontName,
-        fontFamily: style.fontFamily,
-        fontSize: fontHeight,
-        rotation: (angle * 180) / Math.PI,
-        direction:
-          item.dir === "ltr" || item.dir === "rtl" || item.dir === "ttb" ? item.dir : "unknown",
-      });
+      for (const segment of segments) {
+        const startAdvance = (advance * segment.start) / sourceLength;
+        const segmentAdvance = Math.max(
+          1,
+          (advance * (segment.end - segment.start)) / sourceLength,
+        );
+        const baselineX = transform[4] + Math.cos(angle) * startAdvance;
+        const baselineY = transform[5] + Math.sin(angle) * startAdvance;
+        const bounds = transformedBounds(
+          baselineX,
+          baselineY,
+          segmentAdvance,
+          localTop,
+          localBottom,
+          angle,
+        );
+        const segmentTransform: PdfTextBlock["transform"] = [
+          transform[0],
+          transform[1],
+          transform[2],
+          transform[3],
+          baselineX,
+          baselineY,
+        ];
+
+        blocks.push({
+          id: `source-${pageIndex + 1}-${blocks.length}`,
+          pageIndex,
+          text: segment.text,
+          ...bounds,
+          baselineX,
+          baselineY,
+          localTop,
+          localHeight: Math.max(1, localBottom - localTop),
+          advance: segmentAdvance,
+          position: { x: bounds.x, y: bounds.y },
+          transform: segmentTransform,
+          fontName: item.fontName,
+          fontFamily: style.fontFamily,
+          fontSize: fontHeight,
+          rotation: (angle * 180) / Math.PI,
+          direction:
+            item.dir === "ltr" || item.dir === "rtl" || item.dir === "ttb" ? item.dir : "unknown",
+        });
+      }
     }
 
     return {

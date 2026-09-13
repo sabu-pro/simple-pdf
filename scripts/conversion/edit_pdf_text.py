@@ -2,13 +2,16 @@
 
 The browser sends rotation-aware PDF.js bounds. PyMuPDF re-extracts the source
 span, redacts its content without painting a fill rectangle, and only then adds
-replacement text. No document content is logged or retained by this worker.
+replacement text. Document text is logged only when SIMPLEPDF_DEBUG_TEXT_EDIT
+is explicitly enabled, and is never retained by this worker.
 """
 from __future__ import annotations
 
 import json
 import math
+import os
 import sys
+import unicodedata
 from pathlib import Path
 
 try:
@@ -21,17 +24,63 @@ except ImportError as error:
     raise SystemExit(0)
 
 _VERTICAL_GRID_LINES: dict[int, list[tuple[float, float, float]]] = {}
+_DEBUG_TEXT_EDIT = os.getenv("SIMPLEPDF_DEBUG_TEXT_EDIT", "").lower() in {"1", "true", "yes"}
 
 
 def clean(value: str) -> str:
     return " ".join(value.replace("\x00", "").replace("\u00a0", " ").split())
 
 
+def comparison_key(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).replace("\x00", "")
+    return "".join(
+        character
+        for character in normalized
+        if not character.isspace() and character not in {"\u200b", "\u200c", "\u200d", "\ufeff"}
+    )
+
+
+def rect_values(rect: fitz.Rect) -> list[float]:
+    return [round(float(value), 3) for value in (rect.x0, rect.y0, rect.x1, rect.y1)]
+
+
+def debug_verification(
+    page_number: int,
+    item: dict,
+    nearby: str,
+    verification_text: str,
+    extracted: list[dict],
+) -> None:
+    if not _DEBUG_TEXT_EDIT:
+        return
+    edit = item["edit"]
+    print(
+        json.dumps(
+            {
+                "event": "source_text_verification",
+                "page": page_number,
+                "editId": edit["id"],
+                "originalText": edit["originalText"],
+                "replacementText": edit["replacementText"],
+                "selectedBounds": rect_values(item["match"]["expected"]),
+                "matchedBounds": rect_values(item["match"]["rect"]),
+                "nearbyText": nearby,
+                "verificationText": verification_text,
+                "extractedSpans": extracted,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        file=sys.stderr,
+        flush=True,
+    )
+
+
 def display_rect(page: fitz.Page, rect: fitz.Rect) -> fitz.Rect:
     return fitz.Rect(rect) * page.rotation_matrix
 
 
-def redaction_band(quad: fitz.Quad) -> fitz.Quad:
+def redaction_band(quad: fitz.Quad, text: str) -> fitz.Quad:
     """Use the glyph-run centre so overlapping line boxes cannot erase a neighbour."""
     def between(first: fitz.Point, second: fitz.Point, amount: float) -> fitz.Point:
         return fitz.Point(
@@ -39,12 +88,18 @@ def redaction_band(quad: fitz.Quad) -> fitz.Quad:
             first.y + (second.y - first.y) * amount,
         )
 
+    character_count = max(1, len(comparison_key(text)))
+    edge_fraction = min(0.2, 0.35 / character_count)
+    top_left = between(quad.ul, quad.ur, edge_fraction)
+    top_right = between(quad.ul, quad.ur, 1 - edge_fraction)
+    bottom_left = between(quad.ll, quad.lr, edge_fraction)
+    bottom_right = between(quad.ll, quad.lr, 1 - edge_fraction)
     return fitz.Quad(
         [
-            between(quad.ul, quad.ll, 0.35),
-            between(quad.ur, quad.lr, 0.35),
-            between(quad.ul, quad.ll, 0.65),
-            between(quad.ur, quad.lr, 0.65),
+            between(top_left, bottom_left, 0.35),
+            between(top_right, bottom_right, 0.35),
+            between(top_left, bottom_left, 0.65),
+            between(top_right, bottom_right, 0.65),
         ]
     )
 
@@ -74,6 +129,34 @@ def page_spans(page: fitz.Page) -> list[dict]:
                     continue
                 result.append({**span, "clean_text": text, "line_dir": direction})
     return result
+
+
+def verification_spans(page: fitz.Page, rect: fitz.Rect) -> list[dict]:
+    area = fitz.Rect(rect)
+    area.x0 -= max(4.0, rect.width * 0.15)
+    area.x1 += max(4.0, rect.width * 0.15)
+    area.y0 -= max(2.0, rect.height * 0.5)
+    area.y1 += max(2.0, rect.height * 0.5)
+    return [
+        {"text": span["text"], "bounds": rect_values(fitz.Rect(span["bbox"]))}
+        for span in page_spans(page)
+        if fitz.Rect(span["bbox"]).intersects(area)
+    ]
+
+
+def verification_text(extracted: list[dict], rect: fitz.Rect) -> str:
+    target = fitz.Rect(rect)
+    target.x0 -= 2
+    target.x1 += 2
+    target.y0 -= 2
+    target.y1 += 2
+    selected: list[str] = []
+    for span in extracted:
+        bounds = fitz.Rect(span["bounds"])
+        centre = fitz.Point((bounds.x0 + bounds.x1) / 2, (bounds.y0 + bounds.y1) / 2)
+        if target.contains(centre):
+            selected.append(span["text"])
+    return " ".join(selected)
 
 
 def closest_style(spans: list[dict], rect: fitz.Rect) -> dict | None:
@@ -140,7 +223,7 @@ def find_match(page: fitz.Page, edit: dict) -> dict:
     return {
         "rect": source_rect,
         "quad": quad,
-        "redact_quad": redaction_band(quad),
+        "redact_quad": redaction_band(quad, original),
         "style": style,
         "expected": expected,
     }
@@ -245,7 +328,8 @@ def prepare_replacement(doc: fitz.Document, page: fitz.Page, match: dict, edit: 
         warnings.append(
             f"A close substitute font was used for one replacement on page {edit['pageIndex'] + 1}."
         )
-    source_width = max(1.0, float(match["rect"].width))
+    edge = match["quad"].ur - match["quad"].ul
+    source_width = max(1.0, math.hypot(float(edge.x), float(edge.y)))
     measured = text_length(replacement, size, metric_font, fallback)
     if measured > source_width:
         size = max(4.0, size * source_width / measured)
@@ -257,8 +341,21 @@ def prepare_replacement(doc: fitz.Document, page: fitz.Page, match: dict, edit: 
             "Use shorter text."
         )
     source_rect = match["rect"]
-    origin = fitz.Point(style.get("origin", (source_rect.x0, source_rect.y1)))
     line_dir = tuple(style.get("line_dir", (1.0, 0.0)))
+    direction_length = math.hypot(float(line_dir[0]), float(line_dir[1])) or 1.0
+    along = (
+        float(line_dir[0]) / direction_length,
+        float(line_dir[1]) / direction_length,
+    )
+    normal = (-along[1], along[0])
+    style_origin = fitz.Point(style.get("origin", (source_rect.x0, source_rect.y1)))
+    leading = match["quad"].ul
+    origin = fitz.Point(
+        along[0] * (leading.x * along[0] + leading.y * along[1])
+        + normal[0] * (style_origin.x * normal[0] + style_origin.y * normal[1]),
+        along[1] * (leading.x * along[0] + leading.y * along[1])
+        + normal[1] * (style_origin.x * normal[0] + style_origin.y * normal[1]),
+    )
     container = alignment_container(page, source_rect)
     left_gap = max(0.0, source_rect.x0 - container.x0)
     right_gap = max(0.0, container.x1 - source_rect.x1)
@@ -361,20 +458,32 @@ def edit_pdf_bytes(input_bytes: bytes, edits: list[dict]) -> tuple[bytes, list[s
             page = check[page_index]
             for item in page_plans:
                 edit = item["edit"]
+                matched_rect = fitz.Rect(item["match"]["rect"])
+                nearby = page.get_textbox(matched_rect)
+                extracted = verification_spans(page, matched_rect)
+                extracted_text = verification_text(extracted, matched_rect)
+                debug_verification(
+                    page_index + 1,
+                    item,
+                    nearby,
+                    extracted_text,
+                    extracted,
+                )
+                original_key = comparison_key(edit["originalText"])
+                replacement_key = comparison_key(edit["replacementText"])
+                extracted_key = comparison_key(extracted_text)
                 if edit["deleted"]:
-                    nearby = page.get_textbox(fitz.Rect(item["match"]["rect"]))
-                    if clean(edit["originalText"]) and clean(edit["originalText"]) in clean(nearby):
+                    if original_key and original_key in extracted_key:
                         raise ValueError(f"Source text removal could not be verified on page {page_index + 1}.")
                 elif clean(edit["replacementText"]) != clean(edit["originalText"]):
-                    nearby = page.get_textbox(fitz.Rect(item["match"]["rect"]))
                     if (
-                        clean(edit["originalText"]) not in clean(edit["replacementText"])
-                        and clean(edit["originalText"]) in clean(nearby)
+                        original_key not in replacement_key
+                        and original_key in extracted_key
                     ):
                         raise ValueError(
                             f"Source text removal could not be verified on page {page_index + 1}."
                         )
-                    if not page.search_for(clean(edit["replacementText"])):
+                    if not replacement_key or replacement_key not in extracted_key:
                         raise ValueError(f"Replacement text could not be verified on page {page_index + 1}.")
     finally:
         check.close()

@@ -25,6 +25,44 @@
   align-items: center;
   gap: 3px;
 }
+.mark-tool {
+  position: relative;
+}
+.mark-picker {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 7px);
+  left: 0;
+  display: grid;
+  min-width: 132px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: white;
+  box-shadow: 0 10px 28px #23352524;
+}
+.mark-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  color: #59685f;
+  font-size: 11px;
+  text-align: left;
+}
+.mark-option:hover,
+.mark-option:focus-visible {
+  background: #edf5ef;
+  color: #087e65;
+}
+.mark-symbol {
+  width: 20px;
+  color: #1d2d28;
+  font-size: 17px;
+  line-height: 1;
+  text-align: center;
+}
 .toolbar-group + .toolbar-group {
   border-left: 1px solid var(--border);
   padding-left: 10px;
@@ -170,7 +208,8 @@
   cursor: text;
 }
 .cursor-draw,
-.cursor-highlight {
+.cursor-highlight,
+.cursor-mark {
   cursor: crosshair;
 }
 .cursor-select g {

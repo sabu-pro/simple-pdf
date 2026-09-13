@@ -2,6 +2,7 @@ import {
   BlendMode,
   concatTransformationMatrix,
   degrees,
+  LineCapStyle,
   popGraphicsState,
   pushGraphicsState,
   rgb,
@@ -91,6 +92,45 @@ export async function exportPdf(original: Uint8Array, input: EditorDocument) {
         opacity: object.opacity,
         rotate: degrees(0),
       });
+    } else if (object.type === "mark") {
+      const thickness = (Math.min(object.width, object.height) * 2.2) / 24;
+      const line = (startX: number, startY: number, endX: number, endY: number) =>
+        page.drawLine({
+          start: {
+            x: (startX * object.width) / 24,
+            y: (-startY * object.height) / 24,
+          },
+          end: {
+            x: (endX * object.width) / 24,
+            y: (-endY * object.height) / 24,
+          },
+          thickness,
+          lineCap: LineCapStyle.Round,
+          color: color(object.color),
+          opacity: object.opacity,
+        });
+      if (object.mark === "tick") {
+        line(3, 12, 9, 18);
+        line(9, 18, 21, 5);
+      } else if (object.mark === "cross") {
+        line(5, 5, 19, 19);
+        line(19, 5, 5, 19);
+      } else {
+        const radius = object.mark === "dot" ? 4.5 : 8.5;
+        page.drawEllipse({
+          x: object.width / 2,
+          y: -object.height / 2,
+          xScale: (radius * object.width) / 24,
+          yScale: (radius * object.height) / 24,
+          ...(object.mark === "dot"
+            ? { color: color(object.color), opacity: object.opacity }
+            : {
+                borderColor: color(object.color),
+                borderWidth: thickness,
+                borderOpacity: object.opacity,
+              }),
+        });
+      }
     } else {
       const maxX = Math.max(1, ...object.points.map((point) => point.x));
       const maxY = Math.max(1, ...object.points.map((point) => point.y));

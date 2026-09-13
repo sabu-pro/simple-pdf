@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PDFDocument, degrees } from "pdf-lib";
 import { loadPdf, mergePdfs } from "@/lib/pdf/core";
 import { validateFile, validateMagic } from "@/lib/files/validation";
-import { deserializeDocument, serializeDocument } from "@/lib/editor/model";
+import { createMarkObject, deserializeDocument, serializeDocument } from "@/lib/editor/model";
 import {
   clientToPage,
   exportMatrix,
@@ -178,6 +178,21 @@ describe("editor model and export", () => {
   };
   it("serializes a document without losing overlay data", () => {
     expect(deserializeDocument(serializeDocument(model))).toEqual(model);
+  });
+  it("serializes supported form marks and rejects unknown mark types", () => {
+    const marks = (["tick", "cross", "dot", "circle"] as const).map((mark, index) =>
+      createMarkObject(mark, 0, 20 + index * 30, 100, "#202d2b"),
+    );
+    expect(
+      deserializeDocument(serializeDocument({ ...model, objects: marks })).objects.map(
+        (object) => object.type === "mark" && object.mark,
+      ),
+    ).toEqual(["tick", "cross", "dot", "circle"]);
+    expect(() =>
+      deserializeDocument(
+        JSON.stringify({ ...model, objects: [{ ...marks[0], mark: "unknown" }] }),
+      ),
+    ).toThrow("mark");
   });
   it("rejects nonfinite coordinates and unsafe signature data", () => {
     expect(() =>

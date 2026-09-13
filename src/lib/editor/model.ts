@@ -1,7 +1,7 @@
-import type { EditorDocument, EditorObject, EditorTool } from "@/types/editor";
+import type { EditorDocument, EditorObject, EditorTool, MarkKind } from "@/types/editor";
 
 export function createObject(
-  type: EditorTool,
+  type: Exclude<EditorTool, "select" | "mark">,
   pageIndex: number,
   x: number,
   y: number,
@@ -31,6 +31,29 @@ export function createObject(
     fontFamily: "Helvetica",
     bold: false,
     italic: false,
+  };
+}
+
+export function createMarkObject(
+  mark: MarkKind,
+  pageIndex: number,
+  x: number,
+  y: number,
+  color: string,
+  size = 22,
+): EditorObject {
+  return {
+    id: crypto.randomUUID(),
+    pageIndex,
+    type: "mark",
+    mark,
+    x,
+    y,
+    width: size,
+    height: size,
+    rotation: 0,
+    opacity: 1,
+    color,
   };
 }
 
@@ -68,7 +91,7 @@ export function deserializeDocument(json: string): EditorDocument {
     if (
       !object ||
       typeof object.id !== "string" ||
-      !["text", "draw", "highlight", "signature"].includes(object.type) ||
+      !["text", "draw", "highlight", "signature", "mark"].includes(object.type) ||
       !Number.isInteger(object.pageIndex) ||
       object.pageIndex < 0 ||
       object.pageIndex >= value.pageCount ||
@@ -103,6 +126,11 @@ export function deserializeDocument(json: string): EditorDocument {
         object.strokeWidth <= 0)
     )
       throw new Error("Invalid drawing.");
+    if (
+      object.type === "mark" &&
+      !["tick", "cross", "dot", "circle"].includes(object.mark)
+    )
+      throw new Error("Invalid mark object.");
     if (
       object.type === "signature" &&
       (typeof object.dataUrl !== "string" ||

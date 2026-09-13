@@ -134,6 +134,58 @@ test("editor creates, moves, resizes, undoes, signs and exports real overlays", 
   ).toBeTruthy();
 });
 
+test("editor places, edits, and exports form marks", async ({ page }) => {
+  await page.goto("/edit");
+  await page
+    .getByLabel("Choose PDF file", { exact: true })
+    .setInputFiles(path.join(fixtures, "sample.pdf"));
+  const overlay = page.locator(".editor-overlay");
+  await expect(overlay).toBeVisible();
+  const sheet = await overlay.boundingBox();
+  expect(sheet).toBeTruthy();
+  for (const [index, name] of ["Tick", "Cross", "Dot", "Circle"].entries()) {
+    await page.getByRole("button", { name: "Marks", exact: true }).click();
+    await expect(page.getByRole("menu", { name: "Choose a mark" })).toBeVisible();
+    await page.getByRole("menuitem", { name, exact: true }).click();
+    await page.mouse.click(sheet!.x + 90 + index * 55, sheet!.y + 220);
+    await expect(page.getByRole("button", { name: `Mark: ${name}`, exact: true })).toBeVisible();
+  }
+
+  await page.getByRole("button", { name: "Delete addition", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Mark: Circle", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Mark: Circle", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Redo", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Mark: Circle", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo", exact: true }).click();
+
+  const tick = page.getByRole("button", { name: "Mark: Tick", exact: true });
+  await tick.click();
+  const tickBox = await tick.boundingBox();
+  expect(tickBox).toBeTruthy();
+  await page.mouse.move(tickBox!.x + tickBox!.width / 2, tickBox!.y + tickBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(tickBox!.x + 55, tickBox!.y + 50, { steps: 5 });
+  await page.mouse.up();
+  const handle = page.locator("[data-resize]");
+  const resize = await handle.boundingBox();
+  expect(resize).toBeTruthy();
+  await page.mouse.move(resize!.x + resize!.width / 2, resize!.y + resize!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(resize!.x + 20, resize!.y + 20, { steps: 4 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+  await expect(tick.locator("polyline")).toBeVisible();
+
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF", exact: true }).click();
+  const download = await pending;
+  const output = path.join(fixtures, "marked.pdf");
+  await download.saveAs(output);
+  expect((await PDFDocument.load(await readFile(output))).getPageCount()).toBe(2);
+  await expect(page.locator(".notice-error")).toHaveCount(0);
+});
+
 test("editor replaces and deletes original text without leaving the old glyphs", async ({
   page,
 }) => {

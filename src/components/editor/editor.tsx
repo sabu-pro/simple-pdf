@@ -29,12 +29,19 @@ import { openBrowserPdf } from "@/lib/pdf/browser";
 import { exportPdf } from "@/lib/pdf/export";
 import { applySourceTextEdits } from "@/lib/pdf/source-edit-client";
 import { historyReducer } from "@/lib/editor/history";
-import { createObject } from "@/lib/editor/model";
+import { createMarkObject, createObject } from "@/lib/editor/model";
 import { clientToPage } from "@/lib/editor/coordinates";
 import { extractTextPage, type PdfTextBlock, type PdfTextLayerModel } from "@/lib/pdf/text-layer";
 import { downloadBytes, outputName } from "@/lib/files/download";
 import { errorMessage, validateFile } from "@/lib/files/validation";
-import type { EditorObject, EditorTool, PageGeometry, Point, SourceTextEdit } from "@/types/editor";
+import type {
+  EditorObject,
+  EditorTool,
+  MarkKind,
+  PageGeometry,
+  Point,
+  SourceTextEdit,
+} from "@/types/editor";
 import { PdfPage } from "./pdf-page";
 import { SignatureDialog } from "./signature-dialog";
 import "./editor.css";
@@ -47,6 +54,17 @@ type Gesture = {
   points?: Point[];
 };
 type EditorState = { objects: EditorObject[]; sourceTextEdits: SourceTextEdit[] };
+
+const MARK_OPTIONS = [
+  { id: "tick", symbol: "✓", label: "Tick" },
+  { id: "cross", symbol: "✕", label: "Cross" },
+  { id: "dot", symbol: "•", label: "Dot" },
+  { id: "circle", symbol: "○", label: "Circle" },
+] as const satisfies ReadonlyArray<{ id: MarkKind; symbol: string; label: string }>;
+
+function markLabel(mark: MarkKind) {
+  return MARK_OPTIONS.find((option) => option.id === mark)?.label ?? "Mark";
+}
 
 function sourceEditFor(
   source: PdfTextBlock,
@@ -93,6 +111,8 @@ export function Editor({ signing = false }: { signing?: boolean }) {
   const [sourceDraft, setSourceDraft] = useState("");
   const [draft, setDraft] = useState<EditorObject>();
   const [tool, setTool] = useState<EditorTool>("select");
+  const [markKind, setMarkKind] = useState<MarkKind>("tick");
+  const [markMenuOpen, setMarkMenuOpen] = useState(false);
   const [color, setColor] = useState("#202d2b"),
     [fontSize, setFontSize] = useState(18);
   const [signatureOpen, setSignatureOpen] = useState(false);
@@ -185,6 +205,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
           });
       }
       if (event.key === "Escape") {
+        setMarkMenuOpen(false);
         setSelectedId(undefined);
         setSelectedSourceId(undefined);
         setSourceDraft("");
@@ -264,6 +285,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
       setSourceTextModel(model);
       setSourceDraft("");
       setDraft(undefined);
+      setMarkMenuOpen(false);
       dispatch({ type: "reset", value: { objects: [], sourceTextEdits: [] } });
       if (model.isScanned) {
         setError("This page appears to be scanned or image-based. Text editing requires OCR.");
@@ -397,6 +419,22 @@ export function Editor({ signing = false }: { signing?: boolean }) {
       setSelectedId(object.id);
       setTool("select");
       return;
+    } else if (tool === "mark") {
+      const size = Math.max(16, Math.min(36, fontSize * 1.2));
+      const object = createMarkObject(
+        markKind,
+        pageIndex,
+        Math.max(0, Math.min(geometry.width - size, point.x - size / 2)),
+        Math.max(0, Math.min(geometry.height - size, point.y - size / 2)),
+        color,
+        size,
+      );
+      commit([...objects, object]);
+      setSelectedId(object.id);
+      setSelectedSourceId(undefined);
+      setTool("select");
+      setMarkMenuOpen(false);
+      return;
     } else if (tool === "draw" || tool === "highlight") {
       const object = createObject(tool, pageIndex, point.x, point.y, color, fontSize);
       gesture.current = {
@@ -430,7 +468,8 @@ export function Editor({ signing = false }: { signing?: boolean }) {
       };
     else if (active.mode === "resize") {
       const width = Math.min(geometry.width - next.x, Math.max(16, next.width + dx));
-      const proportional = next.type === "signature" || next.type === "text";
+      const proportional =
+        next.type === "signature" || next.type === "text" || next.type === "mark";
       const factor = Math.min(width / next.width, (geometry.height - next.y) / next.height);
       next = {
         ...next,
@@ -552,7 +591,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
           description={
             signing
               ? "Draw, type or upload a signature. Place it on your document and download your signed PDF."
-              : "Edit existing text or add notes, highlights, drawings and signatures. Download a new PDF when you’re done."
+              : "Edit existing text or add notes, marks, highlights, drawings and signatures. Download a new PDF when you’re done."
           }
         />
         <UploadZone onFiles={(files) => void upload(files)} disabled={!!busy} />
@@ -645,6 +684,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
               aria-pressed={tool === item.id}
               onClick={() => {
                 setTool(item.id);
+                setMarkMenuOpen(false);
                 setSelectedId(undefined);
                 setSelectedSourceId(undefined);
               }}
@@ -654,10 +694,52 @@ export function Editor({ signing = false }: { signing?: boolean }) {
               <span>{item.label}</span>
             </button>
           ))}
+          <div className="mark-tool">
+            <button
+              className={`tool-button ${tool === "mark" ? "active" : ""}`}
+              aria-label="Marks"
+              aria-haspopup="menu"
+              aria-expanded={markMenuOpen}
+              aria-pressed={tool === "mark"}
+              onClick={() => {
+                setMarkMenuOpen((open) => !open);
+                setSelectedId(undefined);
+                setSelectedSourceId(undefined);
+              }}
+              disabled={!!busy}
+            >
+              <Check size={17} />
+              <span>Marks</span>
+            </button>
+            {markMenuOpen && (
+              <div className="mark-picker" role="menu" aria-label="Choose a mark">
+                {MARK_OPTIONS.map((option) => (
+                  <button
+                    key={option.id}
+                    className="mark-option"
+                    role="menuitem"
+                    onClick={() => {
+                      setMarkKind(option.id);
+                      setTool("mark");
+                      setMarkMenuOpen(false);
+                    }}
+                  >
+                    <span className="mark-symbol" aria-hidden="true">
+                      {option.symbol}
+                    </span>
+                    <span>{option.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             className="tool-button"
             aria-label="Signature"
-            onClick={() => setSignatureOpen(true)}
+            onClick={() => {
+              setMarkMenuOpen(false);
+              setSignatureOpen(true);
+            }}
             disabled={!geometry || !!busy}
           >
             <PenLine size={17} />
@@ -772,7 +854,9 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                   ? "Click on the page to add text."
                   : tool === "draw"
                     ? "Drag on the page to draw."
-                    : "Drag across an area to highlight it."}
+                    : tool === "highlight"
+                      ? "Drag across an area to highlight it."
+                      : `Click on the page to place a ${markLabel(markKind).toLowerCase()}.`}
             </span>
             <span>Original PDF + your edits</span>
           </div>
@@ -921,6 +1005,8 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                           aria-label={
                             object.type === "text"
                               ? `Text: ${object.content}`
+                              : object.type === "mark"
+                                ? `Mark: ${markLabel(object.mark)}`
                               : `${object.type} addition`
                           }
                           aria-pressed={selectedId === object.id}
@@ -971,6 +1057,58 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                               height={object.height}
                               opacity={object.opacity}
                             />
+                          )}
+                          {object.type === "mark" && (
+                            <svg
+                              width={object.width}
+                              height={object.height}
+                              viewBox="0 0 24 24"
+                              aria-hidden="true"
+                            >
+                              {object.mark === "tick" && (
+                                <polyline
+                                  points="3,12 9,18 21,5"
+                                  fill="none"
+                                  stroke={object.color}
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  opacity={object.opacity}
+                                />
+                              )}
+                              {object.mark === "cross" && (
+                                <g
+                                  fill="none"
+                                  stroke={object.color}
+                                  strokeWidth="2.2"
+                                  strokeLinecap="round"
+                                  opacity={object.opacity}
+                                >
+                                  <line x1="5" y1="5" x2="19" y2="19" />
+                                  <line x1="19" y1="5" x2="5" y2="19" />
+                                </g>
+                              )}
+                              {object.mark === "dot" && (
+                                <circle
+                                  cx="12"
+                                  cy="12"
+                                  r="4.5"
+                                  fill={object.color}
+                                  opacity={object.opacity}
+                                />
+                              )}
+                              {object.mark === "circle" && (
+                                <circle
+                                  cx="12"
+                                  cy="12"
+                                  r="8.5"
+                                  fill="none"
+                                  stroke={object.color}
+                                  strokeWidth="2.2"
+                                  opacity={object.opacity}
+                                />
+                              )}
+                            </svg>
                           )}
                           {object.type === "draw" && (
                             <polyline
@@ -1070,7 +1208,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                 Add text
               </Button>
               <label className="field mb-4">
-                Drawing / text color
+                Drawing / text / mark color
                 <input
                   aria-label="Default color"
                   type="color"
@@ -1198,7 +1336,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
                     if (width >= 8 && geometry && width <= geometry.width - selected.x)
                       updateSelected({
                         width,
-                        ...(selected.type === "signature"
+                        ...(selected.type === "signature" || selected.type === "mark"
                           ? { height: (selected.height * width) / selected.width }
                           : {}),
                       });

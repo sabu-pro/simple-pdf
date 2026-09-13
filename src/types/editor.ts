@@ -24,7 +24,9 @@ export type TextObject = BaseObject & {
 export type DrawObject = BaseObject & { type: "draw"; points: Point[]; strokeWidth: number };
 export type HighlightObject = BaseObject & { type: "highlight" };
 export type SignatureObject = BaseObject & { type: "signature"; dataUrl: string };
-export type EditorObject = TextObject | DrawObject | HighlightObject | SignatureObject;
+export type MarkKind = "tick" | "cross" | "dot" | "circle";
+export type MarkObject = BaseObject & { type: "mark"; mark: MarkKind };
+export type EditorObject = TextObject | DrawObject | HighlightObject | SignatureObject | MarkObject;
 export type SourceTextEdit = {
   id: string;
   pageIndex: number;
@@ -49,4 +51,4 @@ export type EditorDocument = {
   objects: EditorObject[];
   sourceTextEdits?: SourceTextEdit[];
 };
-export type EditorTool = "select" | "text" | "draw" | "highlight";
+export type EditorTool = "select" | "text" | "draw" | "highlight" | "mark";

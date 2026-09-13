@@ -31,7 +31,7 @@ This uses PyMuPDF, pdf2docx, and python-docx. Set `PYTHON_PATH` in `.env.local` 
 
 | Tool        | What works                                                                                                                                  | Where processing happens                             |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| Edit PDF    | Select/replace/delete original text; add/move/resize text, drawings, highlights and signatures; undo/redo; export                           | Browser plus isolated PyMuPDF worker for source text |
+| Edit PDF    | Select/replace/delete original text; add/move/resize text, form marks, drawings, highlights and signatures; undo/redo; export                | Browser plus isolated PyMuPDF worker for source text |
 | Merge PDF   | Multiple uploads, page counts, drag or button reordering, removal, real page copying, download                                              | Browser memory                                       |
 | Word to PDF | DOCX → PDF with supported styles, tables, images, sections, headers/footers and page breaks through Ream                                   | Browser memory                                       |
 | PDF to Word | Layout-aware editable DOCX with text styling, page dimensions, tables, images, columns, visual headers/footers, form values and page breaks | Temporary pdf2docx Python job                        |
@@ -110,13 +110,13 @@ tests/                       Unit, integration and browser tests
 
 PDF.js renders only the active page into a canvas. Rendering is cancelled when switching pages or zooming. Device pixel ratio and render pixel count are bounded. No thumbnails or full-document render pass are needed to view a large PDF.
 
-The original PDF bytes remain immutable during the editing session. User additions are typed `EditorObject` records: `text`, `draw`, `highlight`, and `signature`. Source edits are separate `SourceTextEdit` records that identify a PDF.js text run and its rotation-aware bounds. Both kinds share the same 50-step undo/redo history. A signature is a PNG/JPG image; typed/drawn signatures are rasterized into transparent PNGs. The fonts used for the UI and the default handwritten style are bundled from Fontsource with their license files in their packages.
+The original PDF bytes remain immutable during the editing session. User additions are typed `EditorObject` records: `text`, `mark`, `draw`, `highlight`, and `signature`. Marks are vector ticks, crosses, dots or circles intended for paper forms. Source edits are separate `SourceTextEdit` records that identify a PDF.js text run and its rotation-aware bounds. Both kinds share the same 50-step undo/redo history. A signature is a PNG/JPG image; typed/drawn signatures are rasterized into transparent PNGs. The fonts used for the UI and the default handwritten style are bundled from Fontsource with their license files in their packages.
 
 Coordinates use the displayed page at **scale 1, origin top left**. PDF.js supplies the viewport transform, including the source page’s crop box and rotation. Pointer coordinates are converted from the actual SVG bounds into that display space. Zoom changes only rendering, never stored object coordinates.
 
 For original text, PDF.js exposes one selectable run at a time. Export sends only the PDF and bounded edit manifest to a private temporary job. PyMuPDF matches the selected run by text and position, applies a fill-free redaction band that removes the source character content, and then inserts the replacement on the original baseline with the source font resource, size, colour, orientation, and inferred alignment. It shrinks long replacements only when necessary to fit and reports a substitute-font warning when an embedded font lacks the requested glyphs.
 
-After source edits, pdf-lib uses the inverse viewport transform, composed with a vertical flip, to place added objects into the original page coordinate system. This preserves rotation and crop boxes. Text remains PDF text; drawings, highlights, and images are embedded into the page content stream. Pages are never flattened to screenshots.
+After source edits, pdf-lib uses the inverse viewport transform, composed with a vertical flip, to place added objects into the original page coordinate system. This preserves rotation and crop boxes. Text remains PDF text; marks, drawings and highlights remain vector content; signature images are embedded at their page coordinates. Pages are never flattened to screenshots.
 
 Undo/redo uses immutable snapshots, capped at 50 changes. Dragging commits once when the pointer is released. Keyboard shortcuts: Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z, Delete/Backspace, arrow-key movement, and Shift+arrow movement. Text inputs keep their normal native editing shortcuts. Added objects are keyboard-focusable; the properties panel provides keyboard text editing, width, font size and deletion. Refreshing or leaving the editor discards its in-memory session; the browser warns on refresh/close when there are additions.
 
@@ -144,7 +144,7 @@ An abrupt operating-system termination can prevent `finally` from running. For d
 
 On Vercel, original-text editing and PDF-to-Word use file-based Python Functions. `requirements.txt` makes Vercel install PyMuPDF, pdf2docx and python-docx automatically. Jobs write only to `/tmp` and delete their temporary directory on success or failure. The 300-page limit remains enforced. Because Vercel limits function request and response bodies to 4.5 MB, hosted source-text editing and PDF-to-Word accept PDFs up to 4 MB, and PDF-to-Word reports when its generated DOCX exceeds the response limit.
 
-Word-to-PDF, merge, added text, drawings, highlights and signatures run in browser memory. The Word converter therefore has no Vercel binary, temporary-file or function-body dependency.
+Word-to-PDF, merge, added text, marks, drawings, highlights and signatures run in browser memory. The Word converter therefore has no Vercel binary, temporary-file or function-body dependency.
 
 A Dockerfile and Compose configuration are included:
 
@@ -171,7 +171,7 @@ Before exposing the service publicly, add a reverse proxy with TLS, body-size li
 
 ## Testing
 
-Unit/integration tests cover file/MIME/magic/size validation, malformed PDFs, real merge order, overlay serialization, zoom and rotated/cropped coordinate conversion, PDF.js source bounds, true glyph removal, style-matched replacement, adjacent-line safety, signature embedding, undo/redo, temporary cleanup, streaming upload limits, genuine DOCX structure, missing LibreOffice, process timeouts, OCR detection, mixed pages, and complex timesheet/form conversion.
+Unit/integration tests cover file/MIME/magic/size validation, malformed PDFs, real merge order, overlay serialization, vector mark rendering, zoom and rotated/cropped coordinate conversion, PDF.js source bounds, true glyph removal, style-matched replacement, adjacent-line safety, signature embedding, undo/redo, temporary cleanup, streaming upload limits, genuine DOCX structure, missing LibreOffice, process timeouts, OCR detection, mixed pages, and complex timesheet/form conversion.
 
 Browser tests open actual PDFs, replace and delete original text, draw/highlight/type/sign, resize and move additions, navigate rotated pages, download and re-extract real PDFs, reorder and merge files, convert a complex timesheet to Word, check scan errors, and inspect the server’s real Word conversion capability. Synthetic fixtures cover a two-page timesheet with tables, columns, styles, images, headers/footers and a form with nine interactive controls.
 

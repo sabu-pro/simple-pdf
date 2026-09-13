@@ -82,3 +82,56 @@ describe("rendered signature placement", () => {
     },
   );
 });
+
+describe("rendered form marks", () => {
+  it("exports tick, cross, dot, and circle marks as aligned vector content", async () => {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const source = await PDFDocument.create();
+    source.addPage([240, 120]);
+    const bytes = await source.save();
+    const marks = (["tick", "cross", "dot", "circle"] as const).map((mark, index) => ({
+      id: mark,
+      type: "mark" as const,
+      mark,
+      pageIndex: 0,
+      x: 20 + index * 50,
+      y: 30,
+      width: 30,
+      height: 30,
+      rotation: 0,
+      opacity: 1,
+      color: "#000000",
+    }));
+    const output = await exportPdf(bytes, {
+      version: 1,
+      filename: "marks.pdf",
+      pageCount: 1,
+      pages: {
+        0: {
+          width: 240,
+          height: 120,
+          rotation: 0,
+          transform: [1, 0, 0, -1, 0, 120],
+        },
+      },
+      objects: marks,
+    });
+    const task = pdfjs.getDocument({ data: output });
+    const document = await task.promise;
+    const page = await document.getPage(1);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    await page.render({
+      canvas: canvas as unknown as HTMLCanvasElement,
+      canvasContext: canvas.getContext("2d") as unknown as CanvasRenderingContext2D,
+      viewport,
+    }).promise;
+    const context = canvas.getContext("2d");
+    const isDark = (x: number, y: number) => context.getImageData(x * 2, y * 2, 1, 1).data[0] < 180;
+    expect(isDark(31, 52)).toBe(true);
+    expect(isDark(85, 45)).toBe(true);
+    expect(isDark(135, 45)).toBe(true);
+    expect(isDark(185, 34)).toBe(true);
+    await task.destroy();
+  });
+});

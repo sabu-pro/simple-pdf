@@ -41,4 +41,4 @@ Before closing the bug, connect the reported iPhone to Safari Web Inspector on a
 2. On the fixed revision, open the same PDF from the device picker; verify visible pages, text editing or annotations, and download. Reopen the downloaded file and verify its original content and edits.
 3. Check Sign, Merge, Word-to-PDF, and PDF-to-Word, including downloads. Try an invalid file and then retry with a valid file.
 
-The changes in this workspace do not update the deployed site by themselves.
+The fix is on the GitHub `main` branch, and the versioned compatibility worker has been verified on the public Vercel deployment. Real-device confirmation remains outstanding.

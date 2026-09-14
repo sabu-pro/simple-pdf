@@ -61,6 +61,7 @@ export function PdfPage({
           !cancelled &&
           !(error instanceof Error && error.name === "RenderingCancelledException")
         ) {
+          console.error(`PDF page ${pageIndex + 1} canvas rendering failed`, error);
           setRendering(false);
           onError(errorMessage(error, PDF_LOAD_ERROR));
         }

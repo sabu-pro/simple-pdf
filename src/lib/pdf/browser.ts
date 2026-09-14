@@ -1,19 +1,25 @@
 "use client";
 import { ensurePromiseWithResolvers, needsLegacyPdfJs } from "./compatibility";
 
-let library: Promise<typeof import("pdfjs-dist")> | undefined;
+type PdfJsLibrary = typeof import("pdfjs-dist");
+let library: Promise<PdfJsLibrary> | undefined;
+let compatibilityRenderer = false;
 export async function getPdfJs() {
   if (!library) {
-    // Decide before importing: the legacy bundle installs polyfills in this realm.
-    // Workers have their own globals, so they need the matching legacy bundle too.
-    const legacy = needsLegacyPdfJs();
-    if (legacy) ensurePromiseWithResolvers();
-    library = (legacy ? import("pdfjs-dist/legacy/build/pdf.mjs") : import("pdfjs-dist"))
+    // Current PDF.js legacy builds still contain syntax that iOS 17 cannot parse.
+    // Keep PDF.js 6 on capable browsers and use the last known-compatible renderer elsewhere.
+    compatibilityRenderer = needsLegacyPdfJs();
+    if (compatibilityRenderer) ensurePromiseWithResolvers();
+    library = (
+      compatibilityRenderer
+        ? import("pdfjs-dist-mobile/legacy/build/pdf.mjs")
+        : import("pdfjs-dist")
+    )
       .then((pdfjs) => {
-        pdfjs.GlobalWorkerOptions.workerSrc = legacy
-          ? "/pdfjs/pdf.worker.legacy.min.mjs"
+        pdfjs.GlobalWorkerOptions.workerSrc = compatibilityRenderer
+          ? "/pdfjs/pdf.worker.mobile-5.4.54.min.mjs"
           : "/pdfjs/pdf.worker.min.mjs";
-        return pdfjs;
+        return pdfjs as unknown as PdfJsLibrary;
       })
       .catch((error) => {
         library = undefined;
@@ -26,10 +32,19 @@ export async function openBrowserPdf(bytes: Uint8Array) {
   const pdfjs = await getPdfJs();
   const task = pdfjs.getDocument({
     data: bytes.slice(),
-    cMapUrl: "/pdfjs/cmaps/",
+    cMapUrl: compatibilityRenderer ? "/pdfjs/mobile/cmaps/" : "/pdfjs/cmaps/",
     cMapPacked: true,
-    standardFontDataUrl: "/pdfjs/standard_fonts/",
-    wasmUrl: "/pdfjs/wasm/",
+    standardFontDataUrl: compatibilityRenderer
+      ? "/pdfjs/mobile/standard_fonts/"
+      : "/pdfjs/standard_fonts/",
+    wasmUrl: compatibilityRenderer ? "/pdfjs/mobile/wasm/" : "/pdfjs/wasm/",
+    ...(compatibilityRenderer
+      ? {
+          isOffscreenCanvasSupported: false,
+          isImageDecoderSupported: false,
+          useWorkerFetch: false,
+        }
+      : {}),
   });
   try {
     return await task.promise;

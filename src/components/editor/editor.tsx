@@ -102,6 +102,15 @@ function upsertSourceEdit(edits: SourceTextEdit[], value: SourceTextEdit) {
     : [...edits, value];
 }
 
+async function pdfLoadStage<T>(stage: string, operation: () => T | Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    console.error(`PDF editor failed during ${stage}`, error);
+    throw error;
+  }
+}
+
 export function Editor({ signing = false }: { signing?: boolean }) {
   const [loaded, setLoaded] = useState<Loaded>();
   const [pageIndex, setPageIndex] = useState(0),
@@ -275,13 +284,17 @@ export function Editor({ signing = false }: { signing?: boolean }) {
         throw new UserFacingError("Open one PDF at a time. Use Merge PDF to combine files.");
       const file = files[0];
       validateFile(file, "pdf");
-      const bytes = await readBlobBytes(file);
-      await loadPdf(bytes);
-      const pdf = await openBrowserPdf(bytes);
+      const bytes = await pdfLoadStage("file reading", () => readBlobBytes(file));
+      await pdfLoadStage("PDF validation", () => loadPdf(bytes));
+      const pdf = await pdfLoadStage("PDF.js document loading", () => openBrowserPdf(bytes));
       pendingPdf = pdf;
-      const firstTextPage = await extractTextPage(pdf, 0);
-      const first = await pdf.getPage(1),
-        viewport = first.getViewport({ scale: 1 });
+      const firstTextPage = await pdfLoadStage("first-page text extraction", () =>
+        extractTextPage(pdf, 0),
+      );
+      const { viewport } = await pdfLoadStage("first-page viewport setup", async () => {
+        const first = await pdf.getPage(1);
+        return { viewport: first.getViewport({ scale: 1 }) };
+      });
       const model: PdfTextLayerModel = {
         pageCount: pdf.numPages,
         totalPages: pdf.numPages,

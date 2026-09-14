@@ -1,6 +1,6 @@
 # Mobile PDF upload compatibility
 
-Status: compatibility fix implemented and checked in automated browsers; real-device confirmation is still required.
+Status: the follow-up Edit/Sign renderer fix is implemented and checked in automated browsers; real-device confirmation is still required.
 
 ## Findings
 
@@ -8,23 +8,26 @@ The original browser loader imported `pdfjs-dist` 6.3.289's modern display bundl
 
 A pre-change diagnostic run in Chromium removed `toHex` separately from the page and worker globals. Selecting a valid PDF produced `n.toHex is not a function`, with no document loaded. The worker response was HTTP 200 with `application/javascript; charset=UTF-8`. The unmodified control loaded the same PDF. This establishes a reproducible compatibility failure, but does **not** establish the exact missing API on the reported iPhone: neither its iOS version nor its remote-inspector stack was available.
 
-PDF.js documents its compatibility build in its [browser-support FAQ](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions#which-browsers-are-supported). Page polyfills do not populate worker globals.
+The first compatibility patch selected PDF.js 6's `legacy` build when those APIs were missing. That fixed byte-processing tools but did not fix Edit/Sign on the reported phone. Mozilla's current [browser-support FAQ](https://github.com/mozilla/pdf.js/wiki/Frequently-Asked-Questions#which-browsers-are-supported) lists Safari 18+ for the current legacy build. [PDF.js issue #20899](https://github.com/mozilla/pdf.js/issues/20899) independently reproduces the rendering failure on iOS 17: 5.4.54 works with the `Promise.withResolvers` shim, while 5.5+ contains newer worker syntax that iOS 17 cannot parse. Syntax support cannot be added with a runtime polyfill. Page polyfills also do not populate worker globals.
 
 The original `errorMessage` returned arbitrary `Error.message` strings, overriding every friendly fallback. That explains why the raw exception appeared in the screenshot despite an upload `try/catch` already existing.
 
 ## Changes
 
-- Detect the modern PDF.js runtime capabilities before importing either bundle. Capable browsers retain the existing modern import and worker URL. Other browsers load the bundled legacy display code and matching same-origin legacy worker.
-- Supply `Promise.withResolvers` only when absent, in both the legacy page path and legacy worker. Use native `Blob.arrayBuffer` when available and `FileReader` otherwise.
+- Detect the modern PDF.js runtime capabilities before importing either bundle. Capable desktop browsers retain PDF.js 6 and its existing worker URL. Feature-limited browsers use a separately pinned `pdfjs-dist` 5.4.54 display bundle and same-origin worker only in the Edit/Sign rendering path.
+- Supply `Promise.withResolvers` only when absent, in both the compatibility page path and worker. Use native `Blob.arrayBuffer` when available and `FileReader` otherwise.
+- Bundle the compatibility renderer's matching CMaps, standard fonts, and WASM assets. Disable OffscreenCanvas, ImageDecoder, and worker-side asset fetching in compatibility mode to avoid partial mobile WebKit implementations.
+- Calculate text-layer transforms locally instead of importing PDF.js 6 again after the compatibility document has loaded.
+- Log the precise failing Edit/Sign stage and the original exception in the browser console: file read, validation, PDF.js document load, first-page text extraction, viewport setup, or canvas render.
 - Destroy failed PDF loading tasks and documents that fail before the editor accepts them.
 - Display explicitly authored validation errors and friendly fallbacks for unexpected errors. Preserve original exception objects in the browser console for debugging. Apply this to Edit, Sign, Merge, Word-to-PDF, PDF-to-Word, and page rendering.
 - Catch synchronous XHR setup/send failures and asynchronous conversion callbacks. Map server error codes to authored messages instead of echoing arbitrary server exception strings. Retain the shared route error boundary.
 
 ## Automated verification
 
-Verified locally: 49 unit tests passed; 27 Chromium/WebKit compatibility checks passed (the desktop-only worker assertion is skipped in WebKit); all existing desktop workflows passed, with PDF-to-Word checked again independently. TypeScript, ESLint, and the production build passed. The modern worker asset's SHA-256 is unchanged from the installed package.
+Verified locally: 49 unit tests passed; 29 Chromium/WebKit compatibility checks passed (the desktop-only worker assertion is skipped in WebKit); and all 8 existing desktop workflows passed. The compatibility set includes the complex-form Sign test in both engines. TypeScript, ESLint, formatting, and the production build passed.
 
-`npm run test:browser-compatibility` runs Chromium and Playwright WebKit on Windows. It covers missing `Iterator`, `toHex`, map helpers, and `Promise.withResolvers` independently in the page and worker; actual PDF rendering; adding text; downloading and extracting the added text; file-reader fallback; safe file errors and same-file retry across all five tools; worker loading failures; and conversion upload/server errors. A Chromium check asserts that capable desktop browsers still request the original modern worker.
+`npm run test:browser-compatibility` runs Chromium and Playwright WebKit on Windows. It covers missing `Iterator`, `toHex`, map helpers, and `Promise.withResolvers` independently in the page and worker; requests the pinned mobile worker; renders actual page pixels; adds and exports text; opens a complex form in Sign PDF; places and exports a signature; checks file-reader fallback; and checks worker failure recovery. A Chromium check asserts that capable desktop browsers still request the original modern worker.
 
 The existing desktop workflow suite covers original text edits, annotations, form marks, signatures, merging, both conversions, downloads, and scan guidance. During concurrent tests, the PDF-to-Word capability probe timed out; rerunning that workflow independently passed. Compatibility tests use a separate output directory to avoid trace-file collisions with the desktop suite.
 

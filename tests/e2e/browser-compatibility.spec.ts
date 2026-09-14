@@ -4,11 +4,12 @@ import { Document, Packer, Paragraph } from "docx";
 import { readFile } from "node:fs/promises";
 import { buildTextLayerModel } from "../../src/lib/pdf/text-layer";
 
-let pdf: Buffer, docx: Buffer;
+let pdf: Buffer, complexPdf: Buffer, docx: Buffer;
 test.beforeAll(async () => {
   const document = await PDFDocument.create();
   document.addPage([400, 500]).drawText("Mobile compatibility sample", { x: 30, y: 450, size: 16 });
   pdf = Buffer.from(await document.save());
+  complexPdf = await readFile("tests/fixtures/complex-form.pdf");
   docx = await Packer.toBuffer(
     new Document({ sections: [{ children: [new Paragraph("Test document")] }] }),
   );
@@ -39,11 +40,11 @@ async function removePdfJsFeature(context: BrowserContext, missing: Missing) {
   });
 }
 
-async function uploadPdf(page: Page, route = "/edit") {
+async function uploadPdf(page: Page, route = "/edit", buffer = pdf) {
   await page.goto(route);
   await page
     .getByLabel("Choose PDF file", { exact: true })
-    .setInputFiles({ name: "mobile.pdf", mimeType: "application/pdf", buffer: pdf });
+    .setInputFiles({ name: "mobile.pdf", mimeType: "application/pdf", buffer });
 }
 
 for (const missing of ["iterator", "toHex", "getOrInsertComputed", "withResolvers"] as const) {
@@ -54,11 +55,11 @@ for (const missing of ["iterator", "toHex", "getOrInsertComputed", "withResolver
     await removePdfJsFeature(context, missing);
     const uncaught: string[] = [];
     page.on("pageerror", (error) => uncaught.push(error.message));
-    const workerResponse = page.waitForResponse("**/pdfjs/pdf.worker.legacy.min.mjs");
+    const workerResponse = page.waitForResponse("**/pdfjs/pdf.worker.mobile-5.4.54.min.mjs");
     const workerCreated = page.waitForEvent("worker");
     await uploadPdf(page);
     expect((await workerResponse).status()).toBe(200);
-    expect((await workerCreated).url()).toContain("pdf.worker.legacy.min.mjs");
+    expect((await workerCreated).url()).toContain("pdf.worker.mobile-5.4.54.min.mjs");
     await expect(page.locator(".editor-overlay")).toBeVisible();
     await expect(page.getByText("Rendering page…")).toBeHidden();
     await expect(page.locator(".notice-error")).toHaveCount(0);
@@ -88,6 +89,27 @@ for (const missing of ["iterator", "toHex", "getOrInsertComputed", "withResolver
     expect(uncaught).toEqual([]);
   });
 }
+
+test("compatibility renderer displays a complex form and places a signature", async ({
+  context,
+  page,
+}, testInfo) => {
+  await removePdfJsFeature(context, "withResolvers");
+  await uploadPdf(page, "/sign", complexPdf);
+  await expect(page.locator(".editor-overlay")).toBeVisible();
+  await expect(page.getByText("Rendering page…")).toBeHidden();
+  await expect(page.locator(".notice-error")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Type", exact: true }).click();
+  await page.getByLabel("Your name", { exact: true }).fill("Mobile signature");
+  await page.getByRole("button", { name: "Place signature", exact: true }).click();
+  await expect(page.getByRole("button", { name: "signature addition", exact: true })).toBeVisible();
+  const pending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download PDF", exact: true }).click();
+  const download = await pending;
+  const output = testInfo.outputPath("mobile-signed-form.pdf");
+  await download.saveAs(output);
+  expect((await PDFDocument.load(await readFile(output))).getPageCount()).toBeGreaterThan(0);
+});
 
 test.describe("modern PDF.js worker", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Desktop Chromium regression check");

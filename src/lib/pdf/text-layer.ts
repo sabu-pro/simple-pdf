@@ -44,6 +44,17 @@ type TextStyle = {
   fontFamily?: string;
 };
 
+function multiplyTransforms(first: number[], second: number[]) {
+  return [
+    first[0] * second[0] + first[2] * second[1],
+    first[1] * second[0] + first[3] * second[1],
+    first[0] * second[2] + first[2] * second[3],
+    first[1] * second[2] + first[3] * second[3],
+    first[0] * second[4] + first[2] * second[5] + first[4],
+    first[1] * second[4] + first[3] * second[5] + first[5],
+  ] as [number, number, number, number, number, number];
+}
+
 function normalizeText(value: string) {
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim();
 }
@@ -111,7 +122,6 @@ export async function extractTextPage(
   pdf: PDFDocumentProxy,
   pageIndex: number,
 ): Promise<PdfTextPageModel> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const page: PDFPageProxy = await pdf.getPage(pageIndex + 1);
   try {
     const viewport = page.getViewport({ scale: 1 });
@@ -123,14 +133,7 @@ export async function extractTextPage(
       if (!("str" in item) || !("transform" in item)) continue;
       const segments = splitDecorativeLineRuns(item.str);
       if (!segments.length) continue;
-      const transform = pdfjs.Util.transform(viewport.transform, item.transform) as [
-        number,
-        number,
-        number,
-        number,
-        number,
-        number,
-      ];
+      const transform = multiplyTransforms(viewport.transform, item.transform);
       const fontHeight = Math.max(1, Math.hypot(transform[2], transform[3]));
       const angle = Math.atan2(transform[1], transform[0]);
       const style = styles[item.fontName] ?? {};

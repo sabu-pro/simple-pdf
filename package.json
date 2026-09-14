@@ -33,6 +33,7 @@
     "next": "^16.3.5",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
+    "pdfjs-dist-mobile": "npm:pdfjs-dist@5.4.54",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "reamkit": "^1.29.0",

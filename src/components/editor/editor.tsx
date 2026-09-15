@@ -27,6 +27,7 @@ import { Button, Busy, Notice, ToolHeading } from "@/components/ui";
 import { loadPdf } from "@/lib/pdf/core";
 import { openBrowserPdf } from "@/lib/pdf/browser";
 import { exportPdf } from "@/lib/pdf/export";
+import { exportEditedPdf } from "@/lib/pdf/edit-export";
 import { applySourceTextEdits } from "@/lib/pdf/source-edit-client";
 import { normalizeSourceReplacement, sourceReplacementDraft } from "@/lib/pdf/source-edits";
 import { historyReducer } from "@/lib/editor/history";
@@ -566,7 +567,7 @@ export function Editor({ signing = false }: { signing?: boolean }) {
         sourceEdited = result.bytes;
         setExportWarnings(result.warnings);
       }
-      const bytes = await exportPdf(sourceEdited, {
+      const bytes = await (signing ? exportPdf : exportEditedPdf)(sourceEdited, {
         version: 1,
         filename: loaded.filename,
         pageCount: loaded.pdf.numPages,
